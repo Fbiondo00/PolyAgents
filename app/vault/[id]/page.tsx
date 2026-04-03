@@ -12,7 +12,7 @@ import { HCSFeed } from '@/components/hcs-feed'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { TrendingUp, ChevronRight, RefreshCw, Zap } from 'lucide-react'
+import { TrendingUp, ChevronRight } from 'lucide-react'
 
 function KpiCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
   return (
@@ -52,6 +52,9 @@ export default function VaultDashboardPage() {
 
   useEffect(() => {
     reload()
+    // Poll every 3s so KPIs stay live after manual/auto cycles
+    const poll = setInterval(reload, 3000)
+    return () => clearInterval(poll)
   }, [reload])
 
   if (loading) {

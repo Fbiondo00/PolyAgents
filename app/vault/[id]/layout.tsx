@@ -16,7 +16,12 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
     // Re-read on focus to pick up any changes
     const onFocus = () => setVault(getVaultById(params.id))
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    // Poll every 5s so sidebar stats stay fresh after cycles
+    const poll = setInterval(() => setVault(getVaultById(params.id)), 5000)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      clearInterval(poll)
+    }
   }, [params.id])
 
   if (!vault) {

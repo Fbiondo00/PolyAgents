@@ -56,9 +56,9 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-inter);
-  --font-heading: var(--font-sora);
-  --font-mono: 'Geist Mono', monospace;
+  --font-sans: var(--font-inter), 'Inter', sans-serif;
+  --font-heading: var(--font-sora), 'Sora', sans-serif;
+  --font-mono: 'Geist Mono', 'Courier New', monospace;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -108,6 +108,12 @@
     color: #E1F5FE;
   }
   h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-sora), var(--font-heading), sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-heading {
     font-family: var(--font-sora), var(--font-heading), sans-serif;
   }
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Plus, TrendingUp, Bot, Shield } from 'lucide-react'
+import { Home, Plus, TrendingUp, Bot, Shield, FileText, Coins } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MobileNavProps {
@@ -17,7 +17,9 @@ export function MobileNav({ vaultId }: MobileNavProps) {
         { href: `/vault/${vaultId}`, icon: Home, label: 'Dash' },
         { href: `/vault/${vaultId}/markets`, icon: TrendingUp, label: 'Markets' },
         { href: `/vault/${vaultId}/agent`, icon: Bot, label: 'Agent' },
+        { href: `/vault/${vaultId}/audit`, icon: FileText, label: 'Audit' },
         { href: `/vault/${vaultId}/policy`, icon: Shield, label: 'Policy' },
+        { href: `/vault/${vaultId}/token`, icon: Coins, label: 'Token' },
       ]
     : [
         { href: '/', icon: Home, label: 'Home' },

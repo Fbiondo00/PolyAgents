@@ -12,7 +12,9 @@ import {
   Bot,
   Coins,
   ChevronLeft,
+  Activity,
 } from 'lucide-react'
+import { PnLSparkline } from '@/components/pnl-sparkline'
 
 interface StatusRailProps {
   vault: Vault
@@ -85,7 +87,12 @@ export function StatusRail({ vault }: StatusRailProps) {
       </nav>
 
       {/* Stats footer */}
-      <div className="p-4 border-t border-[#1A3C50]">
+      <div className="p-4 border-t border-[#1A3C50] space-y-2">
+        {vault.sparkline && vault.sparkline.length > 1 && (
+          <div className="h-10">
+            <PnLSparkline data={vault.sparkline} height={40} />
+          </div>
+        )}
         <div className="flex justify-between text-xs">
           <span className="text-[#B0BEC5]">PnL</span>
           <span className={cn(
@@ -95,8 +102,15 @@ export function StatusRail({ vault }: StatusRailProps) {
             {vault.stats.pnl >= 0 ? '+' : ''}{vault.stats.pnl.toFixed(2)} USDC
           </span>
         </div>
-        <div className="flex justify-between text-xs mt-1">
-          <span className="text-[#B0BEC5]">Cycles</span>
+        <div className="flex justify-between text-xs">
+          <span className="text-[#B0BEC5]">Flips</span>
+          <span className="font-mono text-[#E1F5FE]">{vault.stats.flips}</span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <div className="flex items-center gap-1 text-[#B0BEC5]">
+            <Activity className="h-3 w-3" />
+            Cycles
+          </div>
           <span className="font-mono text-[#E1F5FE]">{vault.stats.cycles}</span>
         </div>
       </div>

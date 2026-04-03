@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Bot, Pause, Play, Zap, Brain, AlertTriangle } from 'lucide-react'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 
 const AI_REASONING = [
   'Order flow momentum positive. BTC bid/ask spread 0.003. Recommend UP tranche placement.',
@@ -32,7 +33,9 @@ interface CycleLog {
 export default function AgentPage() {
   const params = useParams<{ id: string }>()
   const [vault, setVault] = useState<Vault | null>(null)
+  const vaultRef = useRef<Vault | null>(null)
   const [running, setRunning] = useState(false)
+  const [confirmStopOpen, setConfirmStopOpen] = useState(false)
   const [cycleLogs, setCycleLogs] = useState<CycleLog[]>([])
   const [currentReasoning, setCurrentReasoning] = useState('')
   const [hbarPct, setHbarPct] = useState(84.7)
@@ -41,6 +44,7 @@ export default function AgentPage() {
   useEffect(() => {
     const v = getVaultById(params.id)
     setVault(v)
+    vaultRef.current = v
     if (v) {
       setHbarPct((v.funding.hbar / 1.2) * 100)
       setRunning(v.mode === 'auto')
@@ -49,16 +53,19 @@ export default function AgentPage() {
   }, [params.id])
 
   useEffect(() => {
-    if (!running || !vault) return
-    // Simulate auto cycle every ~12s
+    if (!running) return
+    // Simulate auto cycle every ~12s — use vaultRef to avoid stale closure
     intervalRef.current = setInterval(() => {
+      const currentVault = vaultRef.current
+      if (!currentVault) return
+
       const reasoning = AI_REASONING[Math.floor(Math.random() * AI_REASONING.length)]
       setCurrentReasoning(reasoning)
 
       const filled = Math.random() > 0.5
       const deltaPnl = filled ? Math.round((Math.random() * 0.25 - 0.03) * 1000) / 1000 : 0
 
-      addAuditEvent(vault.id, {
+      addAuditEvent(currentVault.id, {
         id: generateAuditId(),
         type: 'ai-analysis',
         timestamp: Date.now(),
@@ -66,12 +73,12 @@ export default function AgentPage() {
       })
 
       if (filled) {
-        addAuditEvent(vault.id, {
+        addAuditEvent(currentVault.id, {
           id: generateAuditId(),
           type: 'fill',
           timestamp: Date.now(),
-          shares: vault.strategy.trancheSize,
-          price: vault.strategy.sellPrice,
+          shares: currentVault.strategy.trancheSize,
+          price: currentVault.strategy.sellPrice,
           pnl: deltaPnl,
         })
         if (deltaPnl > 0) {
@@ -79,8 +86,10 @@ export default function AgentPage() {
         }
       }
 
-      updateVaultStats(vault.id, deltaPnl)
-      setVault(getVaultById(vault.id))
+      updateVaultStats(currentVault.id, deltaPnl)
+      const refreshed = getVaultById(currentVault.id)
+      vaultRef.current = refreshed
+      setVault(refreshed)
 
       setCycleLogs(prev => [{
         id: generateAuditId(),
@@ -92,20 +101,23 @@ export default function AgentPage() {
     }, 12000)
 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [running, vault])
+  }, [running])
 
   function toggleMode() {
     if (!vault) return
     const newMode = vault.mode === 'auto' ? 'advisory' : 'auto'
     const updated = { ...vault, mode: newMode as 'auto' | 'advisory' }
     saveVault(updated)
+    vaultRef.current = updated
     setVault(updated)
     setRunning(newMode === 'auto')
     toast.info(`Agent switched to ${newMode} mode`)
   }
 
   function reload() {
-    setVault(getVaultById(params.id))
+    const v = getVaultById(params.id)
+    vaultRef.current = v
+    setVault(v)
   }
 
   if (!vault) return null
@@ -146,7 +158,7 @@ export default function AgentPage() {
             </div>
           </div>
           <Button
-            onClick={toggleMode}
+            onClick={() => running ? setConfirmStopOpen(true) : toggleMode()}
             variant="outline"
             size="sm"
             className={cn(
@@ -159,6 +171,15 @@ export default function AgentPage() {
             {running ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {running ? 'Pause' : 'Activate'}
           </Button>
+          <ConfirmDialog
+            open={confirmStopOpen}
+            onOpenChange={setConfirmStopOpen}
+            title="Pause Agent?"
+            description="The agent will stop placing new orders. Existing positions will remain open until expiry or manual close."
+            confirmLabel="Pause Agent"
+            destructive
+            onConfirm={() => { setConfirmStopOpen(false); toggleMode() }}
+          />
         </div>
 
         {/* Countdown + HBAR gauge */}

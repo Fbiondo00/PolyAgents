@@ -11,6 +11,7 @@ import { PrivyConnectMock } from '@/components/privy-connect-mock'
 import { saveVault, generateId, generateAuditId } from '@/lib/store'
 import { Vault } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import {
   ChevronLeft, ChevronRight, User, Settings, Shield,
   Wallet, Rocket, Check, Loader2
@@ -55,6 +56,7 @@ export default function CreateVaultPage() {
   const [deployStage, setDeployStage] = useState(-1)
   const [deployDone, setDeployDone] = useState(false)
   const [newVaultId, setNewVaultId] = useState('')
+  const [confirmDeployOpen, setConfirmDeployOpen] = useState(false)
 
   const canProceed = useCallback(() => {
     if (step === 0) return vaultName.trim().length >= 2 && walletConnected
@@ -319,14 +321,24 @@ export default function CreateVaultPage() {
             )}
 
             {!deploying && !deployDone && (
-              <Button
-                onClick={deploy}
-                size="lg"
-                className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-bold gap-2 w-full glow-teal"
-              >
-                <Rocket className="h-4 w-4" />
-                Deploy Vault (8s)
-              </Button>
+              <>
+                <Button
+                  onClick={() => setConfirmDeployOpen(true)}
+                  size="lg"
+                  className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-bold gap-2 w-full glow-teal"
+                >
+                  <Rocket className="h-4 w-4" />
+                  Deploy Vault (8s)
+                </Button>
+                <ConfirmDialog
+                  open={confirmDeployOpen}
+                  onOpenChange={setConfirmDeployOpen}
+                  title="Deploy Vault?"
+                  description={`This will mint an HTS token, register an HCS topic, and activate your agent for "${vaultName}". You will fund it with ${usdcFunding} USDC.`}
+                  confirmLabel="Deploy Now"
+                  onConfirm={() => { setConfirmDeployOpen(false); deploy() }}
+                />
+              </>
             )}
           </div>
         )}
