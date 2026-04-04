@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { RefreshCw, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { addAuditEvent, generateAuditId, updateVaultStats } from '@/lib/store'
+import { getOrCreateEngine } from '@/lib/engine/strategy/engine'
+import { getMarketState, getEngineRun, addEngineAuditEvent } from '@/lib/engine/repositories'
 
 interface CycleButtonProps {
   vaultId: string
@@ -14,10 +15,10 @@ interface CycleButtonProps {
 }
 
 const STAGES = [
-  { label: 'Fetching token gate…', duration: 2000 },
-  { label: 'Checking HBAR balance…', duration: 1000 },
-  { label: 'Running AI analysis…', duration: 1000 },
-  { label: 'Placing CLOB orders…', duration: 1000 },
+  { label: 'Discovering market…', duration: 800 },
+  { label: 'Checking fills…', duration: 400 },
+  { label: 'Placing orders…', duration: 400 },
+  { label: 'Updating ledger…', duration: 400 },
 ]
 
 export function CycleButton({ vaultId, onComplete, className }: CycleButtonProps) {
@@ -31,49 +32,33 @@ export function CycleButton({ vaultId, onComplete, className }: CycleButtonProps
     setDone(false)
     setStage(0)
 
+    // Visual stages with progress
     for (let i = 0; i < STAGES.length; i++) {
       setStage(i)
       await new Promise(r => setTimeout(r, STAGES[i].duration))
     }
 
-    // Mock fill probability
-    const filled = Math.random() > 0.4
-    const deltaPnl = filled ? Math.round((Math.random() * 0.3 - 0.05) * 100) / 100 : 0
+    // Execute real engine step
+    const engine = getOrCreateEngine(vaultId)
+    await engine.step(vaultId)
 
-    addAuditEvent(vaultId, {
-      id: generateAuditId(),
-      type: 'ai-analysis',
-      timestamp: Date.now(),
-      marketId: `btc-5m-${Math.floor(Math.random() * 99)}`,
-      reasoning: 'Automated cycle: RSI divergence detected. Placed UP tranche at spread.',
-    })
+    const state = getMarketState(vaultId)
+    const hasFills = state
+      ? (state.sides.YES.filledBuyQty + state.sides.YES.filledSellQty +
+         state.sides.NO.filledBuyQty + state.sides.NO.filledSellQty) > 0
+      : false
 
-    addAuditEvent(vaultId, {
-      id: generateAuditId(),
-      type: 'bid-placed',
-      timestamp: Date.now(),
-      marketId: `btc-5m-${Math.floor(Math.random() * 99)}`,
-      shares: 15,
-      price: 0.01,
-    })
-
-    if (filled) {
-      addAuditEvent(vaultId, {
-        id: generateAuditId(),
-        type: 'fill',
-        timestamp: Date.now(),
-        shares: 15,
-        price: 0.02,
-        pnl: deltaPnl,
-      })
-      toast.success(`Fill! +${deltaPnl.toFixed(2)} USDC`, {
-        description: 'Bid filled and sell order placed.',
+    if (hasFills) {
+      const totalPnl = state
+        ? state.sides.YES.realizedPnl + state.sides.NO.realizedPnl
+        : 0
+      toast.success(`Fill processed! PnL: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(3)} USDC`, {
+        description: `YES: ${state?.sides.YES.unsoldInventory.toFixed(1) ?? '0'} inv | NO: ${state?.sides.NO.unsoldInventory.toFixed(1) ?? '0'} inv`,
       })
     } else {
       toast.info('Cycle complete — no fills this round.')
     }
 
-    updateVaultStats(vaultId, deltaPnl)
     setDone(true)
     setRunning(false)
     onComplete?.()

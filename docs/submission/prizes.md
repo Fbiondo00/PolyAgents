@@ -12,11 +12,16 @@ PolyAgents uses Arc as the USDC-native settlement layer for its AI-powered predi
 
 ### Link to the line of code where the tech is used
 
-- Smart contract: `docs/sponsors/arc.md:40-54` — VaultPilotMarket.sol (createMarket, placeBet, resolveMarket, claimWinnings)
-- TypeScript client: `docs/sponsors/arc.md:68-79` — viem-based Arc integration (createPredictionMarket, placeBet, resolveMarket, getMarketData)
-- Arc chain config (Arc Testnet, Chain ID 1120, USDC gas): `docs/sponsors/arc.md:7-19`
-- Frontend vault dashboard showing USDC funding: `app/vault/[id]/page.tsx`
-- Frontend market browser with order book: `app/vault/[id]/markets/page.tsx`
+- Smart contract: `contracts/src/VaultPilotMarket.sol` — VaultPilotMarket.sol (createMarket, placeBet, resolveMarket, claimWinnings, getOdds)
+- TypeScript client: `lib/arc/market-client.ts` — viem-based Arc integration (createMarket, placeBet, resolveMarket, getMarket, getOdds, getMarketCount)
+- Contract ABI: `lib/arc/abi.ts` — typed VAULTPILOT_ABI with Outcome enum and function signatures
+- Arc chain config (Arc Testnet, Chain ID 1120, USDC gas): `lib/arc/market-client.ts:26-45` (arcTestnet + localAnvil chain definitions)
+- Server actions (Next.js): `actions/arc/markets.ts` — fetchAllMarkets, createPredictionMarket, placeBetOnMarket, resolvePredictionMarket, claimMarketWinnings
+- Local deploy script: `contracts/script/DeployLocal.s.sol`
+- Arc Testnet deploy script: `contracts/script/Deploy.s.sol`
+- Frontend vault dashboard: `app/vault/[id]/page.tsx`
+- Frontend market browser (wired to live Arc data): `app/vault/[id]/markets/page.tsx`
+- Frontend arc-test panel: `app/arc-test/page.tsx`
 
 ### How easy is it to use the API / Protocol? (1 - very difficult, 10 - very easy)
 

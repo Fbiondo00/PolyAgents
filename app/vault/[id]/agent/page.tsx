@@ -2,15 +2,27 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-import { getVaultById, saveVault, addAuditEvent, generateAuditId, updateVaultStats } from '@/lib/store'
+import { getVaultById, saveVault } from '@/lib/store'
 import { Vault } from '@/lib/types'
-import { ExpiryCountdown } from '@/components/expiry-countdown'
+import { getOrCreateEngine } from '@/lib/engine/strategy/engine'
+import { getMarketState, getEngineRun, addEngineAuditEvent } from '@/lib/engine/repositories'
+import { computeRunPnL } from '@/lib/engine/pnl'
 import { CycleButton } from '@/components/cycle-button'
+import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Bot, Pause, Play, Zap, Brain, AlertTriangle } from 'lucide-react'
+import type { PnlSnapshot } from '@/lib/engine/types'
+
+interface CycleLog {
+  id: string
+  timestamp: number
+  stages: string[]
+  result: string
+  pnl: number
+}
 
 const AI_REASONING = [
   'Order flow momentum positive. BTC bid/ask spread 0.003. Recommend UP tranche placement.',
@@ -21,14 +33,6 @@ const AI_REASONING = [
   'HCS reconciliation confirmed. PnL +0.14 USDC from prior market. Funds reallocated.',
 ]
 
-interface CycleLog {
-  id: string
-  timestamp: number
-  stages: string[]
-  result: string
-  pnl: number
-}
-
 export default function AgentPage() {
   const params = useParams<{ id: string }>()
   const [vault, setVault] = useState<Vault | null>(null)
@@ -36,13 +40,15 @@ export default function AgentPage() {
   const [cycleLogs, setCycleLogs] = useState<CycleLog[]>([])
   const [currentReasoning, setCurrentReasoning] = useState('')
   const [hbarPct, setHbarPct] = useState(84.7)
+  const [pnlSnap, setPnlSnap] = useState<PnlSnapshot | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const engine = getOrCreateEngine(params.id)
 
   useEffect(() => {
     const v = getVaultById(params.id)
     setVault(v)
     if (v) {
-      setHbarPct((v.funding.hbar / 1.2) * 100)
+      setHbarPct(Math.round((v.funding.hbar / 1.2) * 100))
       setRunning(v.mode === 'auto')
       setCurrentReasoning(AI_REASONING[0])
     }
@@ -50,24 +56,29 @@ export default function AgentPage() {
 
   useEffect(() => {
     if (!running || !vault) return
-    // Simulate auto cycle every ~12s
-    intervalRef.current = setInterval(() => {
+
+    intervalRef.current = setInterval(async () => {
       const reasoning = AI_REASONING[Math.floor(Math.random() * AI_REASONING.length)]
       setCurrentReasoning(reasoning)
+
+      // Run a real engine step
+      await engine.step(vault.id)
+
+      // Compute PnL
+      const pnl = computeRunPnL(vault.id)
+      setPnlSnap(pnl)
 
       const filled = Math.random() > 0.5
       const deltaPnl = filled ? Math.round((Math.random() * 0.25 - 0.03) * 1000) / 1000 : 0
 
-      addAuditEvent(vault.id, {
-        id: generateAuditId(),
+      addEngineAuditEvent(vault.id, {
         type: 'ai-analysis',
         timestamp: Date.now(),
         reasoning,
       })
 
       if (filled) {
-        addAuditEvent(vault.id, {
-          id: generateAuditId(),
+        addEngineAuditEvent(vault.id, {
           type: 'fill',
           timestamp: Date.now(),
           shares: vault.strategy.trancheSize,
@@ -79,17 +90,19 @@ export default function AgentPage() {
         }
       }
 
+      // Sync legacy vault stats
+      const { updateVaultStats } = await import('@/lib/store')
       updateVaultStats(vault.id, deltaPnl)
       setVault(getVaultById(vault.id))
 
       setCycleLogs(prev => [{
-        id: generateAuditId(),
+        id: `cl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         timestamp: Date.now(),
-        stages: ['Token gate ✓', 'HBAR reserve ✓', `AI: ${reasoning.slice(0, 40)}…`, filled ? 'Fill executed' : 'No fill'],
+        stages: ['Token gate \u2713', 'HBAR reserve \u2713', `AI: ${reasoning.slice(0, 40)}\u2026`, filled ? 'Fill executed' : 'No fill'],
         result: filled ? `+${deltaPnl.toFixed(3)} USDC` : 'No fill',
         pnl: deltaPnl,
       }, ...prev].slice(0, 20))
-    }, 12000)
+    }, 4000)
 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
   }, [running, vault])
@@ -102,6 +115,12 @@ export default function AgentPage() {
     setVault(updated)
     setRunning(newMode === 'auto')
     toast.info(`Agent switched to ${newMode} mode`)
+
+    if (newMode === 'auto') {
+      engine.start(vault.id)
+    } else {
+      engine.stop(vault.id)
+    }
   }
 
   function reload() {
@@ -128,7 +147,7 @@ export default function AgentPage() {
           <div className="flex items-center gap-3">
             <div className={cn(
               'flex h-10 w-10 items-center justify-center rounded-full',
-              running ? 'bg-[#26A69A]/20 pulse-ring' : 'bg-[#1A3C50]'
+              running ? 'bg-[#26A69A]/20' : 'bg-[#1A3C50]'
             )}>
               <Bot className={cn('h-5 w-5', running ? 'text-[#26A69A]' : 'text-[#B0BEC5]')} />
             </div>
@@ -189,6 +208,36 @@ export default function AgentPage() {
           </div>
         </div>
       </div>
+
+      {/* PnL snapshot from engine */}
+      {pnlSnap && (
+        <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-[#E1F5FE]">Engine PnL</p>
+            <span className={cn('font-mono text-sm font-bold', pnlSnap.totalPnl >= 0 ? 'text-[#26A69A]' : 'text-[#EF5350]')}>
+              {pnlSnap.totalPnl >= 0 ? '+' : ''}{pnlSnap.totalPnl.toFixed(3)} USDC
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div>
+              <span className="text-[#B0BEC5]">Realized: </span>
+              <span className="font-mono text-[#E1F5FE]">{pnlSnap.totalRealizedPnl.toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="text-[#B0BEC5]">Unrealized: </span>
+              <span className="font-mono text-[#E1F5FE]">{pnlSnap.totalUnrealizedPnl.toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="text-[#B0BEC5]">Cycles: </span>
+              <span className="font-mono text-[#E1F5FE]">{pnlSnap.totalCompletedCycles}</span>
+            </div>
+            <div>
+              <span className="text-[#B0BEC5]">Inventory: </span>
+              <span className="font-mono text-[#E1F5FE]">{pnlSnap.totalInventoryCost.toFixed(3)}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI Panel */}
       <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">
