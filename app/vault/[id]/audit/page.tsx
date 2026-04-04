@@ -327,7 +327,7 @@ export default function AuditPage() {
                           </div>
                         )}
                         <a
-                          href={`https://hashscan.io/testnet/topic/${vault.hedera?.topicId}/messages/${msg.sequence_number}`}
+                          href={`https://hashscan.io/testnet/topic/${vault.hedera?.topicId}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-[#00A8B5] hover:text-[#4DD0E1] flex items-center gap-1 w-fit"
@@ -357,7 +357,7 @@ export default function AuditPage() {
                         </span>
                         <span className="text-right">
                           <a
-                            href={`https://hashscan.io/testnet/topic/${vault.hedera?.topicId}/messages/${msg.sequence_number}`}
+                            href={`https://hashscan.io/testnet/topic/${vault.hedera?.topicId}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-[#00A8B5] hover:text-[#4DD0E1]"
