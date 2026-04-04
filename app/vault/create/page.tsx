@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StrategyForm } from '@/components/strategy-form'
 import { saveVault, generateId, generateAuditId } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
+import { initVault } from '@/actions/hedera'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft, ChevronRight, User, Settings, Shield,
@@ -25,13 +26,11 @@ const STEPS = [
 ]
 
 const DEPLOY_STAGES = [
-  'Minting HTS token…',
-  'Registering HCS topic…',
-  'Submitting strategy hash…',
-  'Funding vault…',
-  'Activating agent…',
-  'Provisioning order gateway…',
-  'Verifying policy…',
+  'Connecting to Hedera…',
+  'Creating HTS token…',
+  'Minting vault shares…',
+  'Registering HCS audit topic…',
+  'Logging deployment to HCS…',
   'Vault live!',
 ]
 
@@ -57,6 +56,7 @@ export default function CreateVaultPage() {
   const [deploying, setDeploying] = useState(false)
   const [deployStage, setDeployStage] = useState(-1)
   const [deployDone, setDeployDone] = useState(false)
+  const [deployError, setDeployError] = useState('')
   const [newVaultId, setNewVaultId] = useState('')
 
   const canProceed = useCallback(() => {
@@ -67,13 +67,28 @@ export default function CreateVaultPage() {
 
   async function deploy() {
     setDeploying(true)
+    setDeployError('')
     const id = generateId()
     setNewVaultId(id)
 
-    for (let i = 0; i < DEPLOY_STAGES.length; i++) {
+    setDeployStage(0) // "Connecting to Hedera…"
+
+    const result = await initVault({
+      vaultId: id,
+      vaultName,
+      initialShares: 1000,
+    })
+
+    if (!result.success || !result.context) {
+      setDeployError(result.error ?? 'Deployment failed')
+      setDeploying(false)
+      return
+    }
+
+    // Advance stages to show completion
+    for (let i = 1; i < DEPLOY_STAGES.length; i++) {
       setDeployStage(i)
-      const wait = i === DEPLOY_STAGES.length - 1 ? 600 : 1000
-      await new Promise(r => setTimeout(r, wait))
+      await new Promise(r => setTimeout(r, 400))
     }
 
     const vault: Vault = {
@@ -97,10 +112,11 @@ export default function CreateVaultPage() {
           id: generateAuditId(),
           type: 'ai-analysis',
           timestamp: Date.now(),
-          reasoning: 'Vault deployed. Initial strategy loaded and agent standing by.',
+          reasoning: `Vault deployed on Hedera. Token ${result.context.tokenId}, Topic ${result.context.topicId}. ${result.context.initialSharesMinted} shares minted.`,
         },
       ],
       sparkline: [0],
+      hedera: result.context,
     }
 
     saveVault(vault)
@@ -310,6 +326,13 @@ export default function CreateVaultPage() {
               </div>
             )}
 
+            {deployError && !deploying && (
+              <div className="rounded-lg border border-[#EF5350]/40 bg-[#EF5350]/10 p-4">
+                <p className="text-sm font-semibold text-[#EF5350] mb-1">Deployment Failed</p>
+                <p className="text-xs text-[#B0BEC5]">{deployError}</p>
+              </div>
+            )}
+
             {deploying && (
               <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-8 space-y-4">
                 <Loader2 className="h-10 w-10 text-[#00A8B5] animate-spin mx-auto" />
@@ -352,7 +375,7 @@ export default function CreateVaultPage() {
                 className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-bold gap-2 w-full glow-teal"
               >
                 <Rocket className="h-4 w-4" />
-                Deploy Vault (8s)
+                Deploy Vault
               </Button>
             )}
           </div>

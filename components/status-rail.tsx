@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {

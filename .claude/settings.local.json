@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"C:\\\\Users\\\\FlavioBiondo\\\\.claude\\\\plugins\\\\marketplaces\\\\hedera-skills\" remote -v)",
+      "Bash(npm install:*)",
+      "Bash(npx next dev --port 3000)",
+      "Bash(curl:*)"
+    ]
+  }
+}

@@ -45,6 +45,8 @@ export interface Vault {
     midPrice: number
   } | null
   sparkline?: number[]
+  hedera?: import('./hedera').HederaContext
+  hederaError?: string
 }
 
 export const DEMO_VAULT: Vault = {

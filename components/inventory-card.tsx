@@ -1,6 +1,6 @@
 'use client'
 
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import { cn } from '@/lib/utils'
 import { TrendingUp, TrendingDown } from 'lucide-react'
 

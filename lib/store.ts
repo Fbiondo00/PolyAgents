@@ -1,6 +1,6 @@
 'use client'
 
-import { Vault, AuditEvent, DEMO_VAULT } from './types'
+import { Vault, AuditEvent, DEMO_VAULT } from '@/types'
 
 const VAULTS_KEY = 'polyagents.vaults'
 const SELECTED_KEY = 'polyagents.selectedVaultId'

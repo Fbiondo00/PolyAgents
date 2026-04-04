@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import { StatusRail } from '@/components/status-rail'
 import { MobileNav } from '@/components/mobile-nav'
 import { getVaultById } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 
 export default function VaultLayout({ children }: { children: React.ReactNode }) {
   const params = useParams<{ id: string }>()

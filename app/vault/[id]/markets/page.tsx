@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { getVaultById, addAuditEvent, generateAuditId } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import { OrderBookTable } from '@/components/order-book-table'
 import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { FillProbabilityRing } from '@/components/fill-probability-ring'
