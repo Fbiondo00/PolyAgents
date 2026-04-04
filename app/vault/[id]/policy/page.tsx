@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { getVaultById, saveVault } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import { StrategyForm } from '@/components/strategy-form'
 import { PolicyHashCard } from '@/components/policy-hash-card'
 import { Button } from '@/components/ui/button'

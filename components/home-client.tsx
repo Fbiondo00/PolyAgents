@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { initDemoVault, getVaults } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import { PnLSparkline } from '@/components/pnl-sparkline'
 import { MobileNav } from '@/components/mobile-nav'
 import {

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { getVaultById } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import { CycleButton } from '@/components/cycle-button'
 import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { InventoryCard } from '@/components/inventory-card'
