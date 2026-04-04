@@ -182,7 +182,7 @@ export default function VaultDashboardPage() {
       )}
 
       {/* HCS Feed */}
-      <HCSFeed />
+      <HCSFeed vault={vault} />
 
       {/* ENS Verification */}
       <ENSVerificationCard vault={vault} />

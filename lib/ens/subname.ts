@@ -8,7 +8,7 @@ import {
 } from "./client"
 
 // ── ABIs ──
-
+// New ABI (ENSIP-1): key as plain string — the standard used by ENS app & universal resolver
 const RESOLVER_ABI = [
   {
     name: "setText",
@@ -30,6 +30,13 @@ const RESOLVER_ABI = [
       { name: "key", type: "string" },
     ],
     outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "supportsInterface",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "interfaceId", type: "bytes4" }],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const
 

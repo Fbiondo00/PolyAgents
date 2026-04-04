@@ -44,8 +44,8 @@ ENS_BASE_DOMAIN=vaultpilot.eth       # nome registrato su ENS
 
 ### Indirizzi contratti Sepolia
 ```
-ENS Registry:          0x00000000000C2e074eC69A0dFb2997BA6C7d2e1e
-Public Resolver:       0x231b0Ee14048e9dCcD1d247744d114a4EB5E8E63
+ENS Registry:          0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e
+Text Resolver:         0x5d457Bf3D59dAb30BC024aAE4251c691dC7038fe  (custom deploy)
 ```
 
 ### Aggiorna il tipo Vault
