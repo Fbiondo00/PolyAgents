@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
@@ -14,6 +14,7 @@ import { initVault } from '@/actions/hedera'
 import { initVaultENS, buildEnsContext } from '@/lib/ens/vault-ens-init'
 import { buildEnsName } from '@/lib/ens/subname'
 import { computePolicyHash } from '@/lib/ens/policy-commitment'
+import { fetchUsdcBalance, approveVaultFunding } from '@/actions/arc/fund-vault'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft, ChevronRight, User, Settings, Shield,
@@ -37,6 +38,7 @@ const DEPLOY_STAGES = [
   'Creating ENS identity…',
   'Committing policy hash…',
   'Registering agent fleet…',
+  'Approving USDC on Arc…',
   'Vault live!',
 ]
 
@@ -47,7 +49,7 @@ export default function CreateVaultPage() {
   const [step, setStep] = useState(0)
   const [vaultName, setVaultName] = useState('')
   const walletConnected = authenticated && wallets.length > 0
-  const walletAddress = wallets[0]?.address ?? ''
+  const walletAddress = (wallets[0]?.address ?? '') as string
   const [strategy, setStrategy] = useState<Vault['strategy']>({
     bidPrice: 0.01,
     sellPrice: 0.02,
@@ -59,12 +61,42 @@ export default function CreateVaultPage() {
   })
   const [mode, setMode] = useState<'advisory' | 'auto'>('auto')
   const [usdcFunding, setUsdcFunding] = useState('100')
+  const [fundingLoading, setFundingLoading] = useState(false)
+  const [fundingTxHash, setFundingTxHash] = useState('')
+  const [fundingExplorerUrl, setFundingExplorerUrl] = useState('')
+  const [onChainBalance, setOnChainBalance] = useState<string | null>(null)
   const [deploying, setDeploying] = useState(false)
   const [deployStage, setDeployStage] = useState(-1)
   const [deployDone, setDeployDone] = useState(false)
   const [deployError, setDeployError] = useState('')
   const [newVaultId, setNewVaultId] = useState('')
   const previewId = newVaultId || vaultName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 16)
+
+  // Fetch on-chain USDC balance when entering funding step
+  useEffect(() => {
+    if (step === 3 && walletAddress) {
+      fetchUsdcBalance(walletAddress).then(setOnChainBalance)
+    }
+  }, [step, walletAddress])
+
+  async function handleApprove() {
+    if (!usdcFunding) return
+    setFundingLoading(true)
+    setFundingTxHash('')
+    setFundingExplorerUrl('')
+    try {
+      const result = await approveVaultFunding({ amountUsdc: parseFloat(usdcFunding) })
+      if (result.success) {
+        setFundingTxHash(result.approveTxHash)
+        setFundingExplorerUrl(result.explorerUrl)
+        setOnChainBalance(result.balanceAfter)
+      }
+    } catch {
+      // silently fail — user can still proceed
+    } finally {
+      setFundingLoading(false)
+    }
+  }
 
   const canProceed = useCallback(() => {
     if (step === 0) return vaultName.trim().length >= 2 && authenticated && wallets.length > 0
@@ -118,7 +150,6 @@ export default function CreateVaultPage() {
       await new Promise(r => setTimeout(r, 400))
     } catch (ensErr) {
       console.warn('ENS initialization failed (non-blocking):', ensErr)
-      // ENS failure is non-blocking — vault still deploys
       setDeployStage(5)
       await new Promise(r => setTimeout(r, 400))
       setDeployStage(6)
@@ -127,7 +158,20 @@ export default function CreateVaultPage() {
       await new Promise(r => setTimeout(r, 400))
     }
 
-    setDeployStage(8) // "Vault live!"
+    // ── Phase 3: Approve USDC on Arc ──
+    setDeployStage(8) // "Approving USDC on Arc…"
+    try {
+      const arcResult = await approveVaultFunding({ amountUsdc: parseFloat(usdcFunding) || 100 })
+      if (arcResult.success) {
+        console.log('[deploy] Arc USDC approved:', arcResult.approveTxHash)
+      } else {
+        console.warn('[deploy] Arc approval failed (non-blocking):', arcResult.error)
+      }
+    } catch (arcErr) {
+      console.warn('[deploy] Arc approval failed (non-blocking):', arcErr)
+    }
+
+    setDeployStage(9) // "Vault live!"
 
     const vault: Vault = {
       id,
@@ -308,34 +352,88 @@ export default function CreateVaultPage() {
           <div className="space-y-6">
             <div>
               <h2 className="font-heading text-xl font-bold text-[#E1F5FE] mb-1">Funding</h2>
-              <p className="text-sm text-[#B0BEC5]">Allocate capital to your vault.</p>
+              <p className="text-sm text-[#B0BEC5]">Allocate capital to your vault on Arc testnet.</p>
             </div>
             <div className="space-y-2">
-              <Label className="text-xs text-[#B0BEC5]">USDC Amount</Label>
+              <Label className="text-xs text-[#B0BEC5]">USDC Amount to Approve</Label>
               <Input
                 type="number"
-                min="10"
+                min="1"
                 max="10000"
                 value={usdcFunding}
                 onChange={e => setUsdcFunding(e.target.value)}
                 className="bg-[#0E1B27] border-[#1A3C50] text-[#E1F5FE] font-mono"
               />
             </div>
+
+            {/* On-chain balance */}
             <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4 space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-[#B0BEC5]">USDC Deposit</span>
-                <span className="font-mono text-[#E1F5FE]">{usdcFunding} USDC</span>
+                <span className="text-[#B0BEC5]">On-chain USDC Balance</span>
+                <span className="font-mono text-[#E1F5FE]">
+                  {onChainBalance !== null
+                    ? `${parseFloat(onChainBalance).toFixed(2)} USDC`
+                    : <Loader2 className="h-3 w-3 animate-spin inline" />
+                  }
+                </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#B0BEC5]">HBAR Reserve</span>
-                <span className="font-mono text-[#E1F5FE]">1.0 HBAR</span>
+                <span className="text-[#B0BEC5]">Approve for Contract</span>
+                <span className="font-mono text-[#E1F5FE]">{usdcFunding} USDC</span>
               </div>
               <div className="h-px bg-[#1A3C50]" />
               <div className="flex justify-between text-sm font-semibold">
-                <span className="text-[#B0BEC5]">Total Deployment</span>
-                <span className="font-mono text-[#00A8B5]">${(parseFloat(usdcFunding) || 0) + 1} equiv.</span>
+                <span className="text-[#B0BEC5]">Remaining after approval</span>
+                <span className="font-mono text-[#00A8B5]">
+                  {onChainBalance !== null
+                    ? `${(parseFloat(onChainBalance) - parseFloat(usdcFunding || '0')).toFixed(2)} USDC`
+                    : '—'}
+                </span>
               </div>
             </div>
+
+            {/* Approve button */}
+            {!fundingTxHash && (
+              <Button
+                onClick={handleApprove}
+                disabled={fundingLoading || !usdcFunding}
+                className="w-full bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-semibold gap-2"
+              >
+                {fundingLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wallet className="h-4 w-4" />
+                )}
+                {fundingLoading ? 'Approving on Arc…' : 'Approve USDC on Arc'}
+              </Button>
+            )}
+
+            {/* Approval confirmed */}
+            {fundingTxHash && (
+              <div className="rounded-lg border border-[#26A69A]/40 bg-[#26A69A]/10 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-[#26A69A]" />
+                  <p className="text-sm font-semibold text-[#E1F5FE]">USDC Approved</p>
+                </div>
+                <p className="text-xs text-[#B0BEC5] break-all">
+                  TX: <span className="font-mono text-[#4DD0E1]">{fundingTxHash.slice(0, 10)}…{fundingTxHash.slice(-8)}</span>
+                </p>
+                {fundingExplorerUrl && (
+                  <a
+                    href={fundingExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
+                  >
+                    View on Arc Explorer
+                  </a>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-[#B0BEC5]">
+              Approval is non-blocking — you can deploy without it, but the engine needs approval to place bets on-chain.
+            </p>
           </div>
         )}
 

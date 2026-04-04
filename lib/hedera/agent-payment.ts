@@ -1,4 +1,4 @@
-import { TransferTransaction, Hbar } from '@hashgraph/sdk'
+import { TransferTransaction, Hbar, AccountId } from '@hashgraph/sdk'
 import { getHederaClient } from './client'
 import { logToHCS } from './hcs-logger'
 import type { AuditEventType } from '@/types'
@@ -8,19 +8,34 @@ export interface PaymentReceipt {
   amount: string
   consensusTimestamp: string
   hashscanUrl: string
+  recipient: string
 }
 
 /**
  * Execute an autonomous HBAR micropayment for an agent cycle.
  * Logs the payment to HCS for verifiable audit trail.
+ *
+ * @param callContext - What the payment is for (e.g. "ai-analysis")
+ * @param vaultId - Vault identifier
+ * @param topicId - HCS audit topic
+ * @param costHbar - Exact HBAR amount based on LLM token usage
+ *                   Falls back to 0.001 HBAR if not provided.
  */
 export async function payForAgentCycle(
   callContext: string,
   vaultId: string,
-  topicId: string
+  topicId: string,
+  costHbar?: number
 ): Promise<PaymentReceipt> {
   const { client, operatorId } = getHederaClient()
-  const amount = new Hbar(0.001)
+  // Use actual LLM cost if provided, otherwise fixed 0.001 HBAR
+  const amount = new Hbar(costHbar ?? 0.001)
+
+  // Resolve recipient: env var > operator (self-pay for demo)
+  const recipientStr = process.env.HEDERA_PAYMENT_RECIPIENT
+  const recipient = recipientStr
+    ? AccountId.fromString(recipientStr)
+    : operatorId
 
   // Import active topic for HCS logging
   const { setActiveTopic } = await import('./hcs-logger')
@@ -28,7 +43,7 @@ export async function payForAgentCycle(
 
   const tx = await new TransferTransaction()
     .addHbarTransfer(operatorId, amount.negated())
-    .addHbarTransfer(operatorId, amount) // self-pay for demo; treasury in prod
+    .addHbarTransfer(recipient, amount)
     .setTransactionMemo(`PolyAgents:${vaultId}:${callContext}`)
     .execute(client)
 
@@ -40,16 +55,18 @@ export async function payForAgentCycle(
   await logToHCS({
     event: 'PAYMENT_MADE' as AuditEventType,
     vault_id: vaultId,
-    amount_hbar: '0.001',
+    amount_hbar: amount.toTinybars().toNumber() / 100_000_000,
     call_context: callContext,
     tx_id: txId,
     consensus_timestamp: timestamp,
+    recipient: recipient.toString(),
   })
 
   return {
     txId,
-    amount: '0.001 ℏ',
+    amount: `${amount.toTinybars().toNumber() / 100_000_000} ℏ`,
     consensusTimestamp: timestamp,
     hashscanUrl: `https://hashscan.io/testnet/transaction/${txId}`,
+    recipient: recipient.toString(),
   }
 }
