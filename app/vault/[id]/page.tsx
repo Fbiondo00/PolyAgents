@@ -9,10 +9,13 @@ import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { InventoryCard } from '@/components/inventory-card'
 import { PnLSparkline } from '@/components/pnl-sparkline'
 import { HCSFeed } from '@/components/hcs-feed'
+import { ENSVerificationCard } from '@/components/ens-verification-card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { TrendingUp, ChevronRight, RefreshCw, Zap } from 'lucide-react'
+import { buildEnsName } from '@/lib/ens/subname'
+import { ENS_BASE_DOMAIN } from '@/lib/ens/client'
+import { TrendingUp, ChevronRight, Globe } from 'lucide-react'
 
 function KpiCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
   return (
@@ -80,6 +83,15 @@ export default function VaultDashboardPage() {
         <div>
           <h1 className="font-heading text-xl font-bold text-[#E1F5FE]">{vault.name}</h1>
           <div className="flex items-center gap-2 mt-1">
+            <a
+              href={`https://app.ens.domains/name/${buildEnsName(vault.id)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
+            >
+              <Globe className="h-3 w-3" />
+              <span className="font-mono">{buildEnsName(vault.id)}</span>
+            </a>
             <Badge className={cn(
               'text-[10px]',
               vault.mode === 'auto'
@@ -171,6 +183,9 @@ export default function VaultDashboardPage() {
 
       {/* HCS Feed */}
       <HCSFeed />
+
+      {/* ENS Verification */}
+      <ENSVerificationCard vault={vault} />
 
       {/* Recent Activity */}
       <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] overflow-hidden">

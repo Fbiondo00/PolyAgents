@@ -11,10 +11,13 @@ import { StrategyForm } from '@/components/strategy-form'
 import { saveVault, generateId, generateAuditId } from '@/lib/store'
 import { Vault } from '@/types'
 import { initVault } from '@/actions/hedera'
+import { initVaultENS, buildEnsContext } from '@/lib/ens/vault-ens-init'
+import { buildEnsName } from '@/lib/ens/subname'
+import { computePolicyHash } from '@/lib/ens/policy-commitment'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft, ChevronRight, User, Settings, Shield,
-  Wallet, Rocket, Check, Loader2
+  Wallet, Rocket, Check, Loader2, Globe
 } from 'lucide-react'
 
 const STEPS = [
@@ -31,6 +34,9 @@ const DEPLOY_STAGES = [
   'Minting vault shares…',
   'Registering HCS audit topic…',
   'Logging deployment to HCS…',
+  'Creating ENS identity…',
+  'Committing policy hash…',
+  'Registering agent fleet…',
   'Vault live!',
 ]
 
@@ -58,6 +64,7 @@ export default function CreateVaultPage() {
   const [deployDone, setDeployDone] = useState(false)
   const [deployError, setDeployError] = useState('')
   const [newVaultId, setNewVaultId] = useState('')
+  const previewId = newVaultId || vaultName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 16)
 
   const canProceed = useCallback(() => {
     if (step === 0) return vaultName.trim().length >= 2 && authenticated && wallets.length > 0
@@ -73,6 +80,7 @@ export default function CreateVaultPage() {
 
     setDeployStage(0) // "Connecting to Hedera…"
 
+    // ── Phase 1: Hedera deployment ──
     const result = await initVault({
       vaultId: id,
       vaultName,
@@ -85,11 +93,41 @@ export default function CreateVaultPage() {
       return
     }
 
-    // Advance stages to show completion
-    for (let i = 1; i < DEPLOY_STAGES.length; i++) {
+    // Advance Hedera stages (0-4)
+    for (let i = 1; i < 5; i++) {
       setDeployStage(i)
       await new Promise(r => setTimeout(r, 400))
     }
+
+    // ── Phase 2: ENS initialization ──
+    let ensResult: Awaited<ReturnType<typeof initVaultENS>> | null = null
+
+    try {
+      setDeployStage(5) // "Creating ENS identity…"
+      ensResult = await initVaultENS({
+        vaultId: id,
+        vaultName,
+        strategy,
+        mode,
+        funding: { usdc: parseFloat(usdcFunding) || 100, hbar: 1.0 },
+        hederaContext: result.context,
+      })
+      setDeployStage(6) // "Committing policy hash…"
+      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(7) // "Registering agent fleet…"
+      await new Promise(r => setTimeout(r, 400))
+    } catch (ensErr) {
+      console.warn('ENS initialization failed (non-blocking):', ensErr)
+      // ENS failure is non-blocking — vault still deploys
+      setDeployStage(5)
+      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(6)
+      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(7)
+      await new Promise(r => setTimeout(r, 400))
+    }
+
+    setDeployStage(8) // "Vault live!"
 
     const vault: Vault = {
       id,
@@ -112,11 +150,12 @@ export default function CreateVaultPage() {
           id: generateAuditId(),
           type: 'ai-analysis',
           timestamp: Date.now(),
-          reasoning: `Vault deployed on Hedera. Token ${result.context.tokenId}, Topic ${result.context.topicId}. ${result.context.initialSharesMinted} shares minted.`,
+          reasoning: `Vault deployed on Hedera. Token ${result.context.tokenId}, Topic ${result.context.topicId}. ${result.context.initialSharesMinted} shares minted.${ensResult ? ` ENS: ${ensResult.ensName}, policy hash ${ensResult.policyHash.slice(0, 16)}...` : ''}`,
         },
       ],
       sparkline: [0],
       hedera: result.context,
+      ens: ensResult ? buildEnsContext(ensResult) : undefined,
     }
 
     saveVault(vault)
@@ -317,10 +356,17 @@ export default function CreateVaultPage() {
                   ['Bid / Sell', `$${strategy.bidPrice} / $${strategy.sellPrice}`],
                   ['Max Capital', `$${strategy.maxCapital}`],
                   ['USDC', `${usdcFunding} USDC`],
+                  ['ENS Name', buildEnsName(previewId)],
+                  ['Policy Hash', computePolicyHash(strategy, vaultName, mode).slice(0, 16) + '…'],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between text-sm">
                     <span className="text-[#B0BEC5]">{k}</span>
-                    <span className="font-mono text-[#E1F5FE]">{v}</span>
+                    <span className={cn(
+                      'font-mono',
+                      k === 'ENS Name' ? 'text-[#00A8B5]' :
+                      k === 'Policy Hash' ? 'text-[#4DD0E1]' :
+                      'text-[#E1F5FE]'
+                    )}>{v}</span>
                   </div>
                 ))}
               </div>
@@ -364,6 +410,17 @@ export default function CreateVaultPage() {
               <div className="rounded-lg border border-[#26A69A]/40 bg-[#26A69A]/10 p-8 space-y-3">
                 <Check className="h-10 w-10 text-[#26A69A] mx-auto" />
                 <p className="font-heading font-bold text-[#E1F5FE]">Vault Deployed!</p>
+                {buildEnsName(newVaultId) && (
+                  <a
+                    href={`https://app.ens.domains/name/${buildEnsName(newVaultId)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mx-auto text-sm text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                    <span className="font-mono">{buildEnsName(newVaultId)}</span>
+                  </a>
+                )}
                 <p className="text-sm text-[#B0BEC5]">Redirecting to dashboard…</p>
               </div>
             )}
