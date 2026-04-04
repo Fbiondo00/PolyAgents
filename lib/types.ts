@@ -12,6 +12,7 @@ export interface AuditEvent {
 export interface Vault {
   id: string
   name: string
+  walletAddress?: string
   created: number
   strategy: {
     bidPrice: number

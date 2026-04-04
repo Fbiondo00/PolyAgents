@@ -12,6 +12,7 @@ import {
   Bot, Zap, Shield, TrendingUp, ArrowRight, Plus,
   BarChart3, Activity, Coins, ChevronRight
 } from 'lucide-react'
+import { PrivyLoginButton } from '@/components/privy-login-button'
 
 const TICKER_ITEMS = [
   { label: 'BTC/USD 5m', value: '0.523', delta: '+2.1%' },
@@ -67,6 +68,7 @@ export function HomeClient() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            <PrivyLoginButton />
             <Link href="/vault/create">
               <Button size="sm" className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-semibold gap-1.5">
                 <Plus className="h-3.5 w-3.5" />

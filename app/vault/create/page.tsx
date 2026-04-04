@@ -3,11 +3,11 @@
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { StrategyForm } from '@/components/strategy-form'
-import { PrivyConnectMock } from '@/components/privy-connect-mock'
 import { saveVault, generateId, generateAuditId } from '@/lib/store'
 import { Vault } from '@/lib/types'
 import { cn } from '@/lib/utils'
@@ -37,9 +37,12 @@ const DEPLOY_STAGES = [
 
 export default function CreateVaultPage() {
   const router = useRouter()
+  const { ready, authenticated, login } = usePrivy()
+  const { wallets } = useWallets()
   const [step, setStep] = useState(0)
   const [vaultName, setVaultName] = useState('')
-  const [walletConnected, setWalletConnected] = useState(false)
+  const walletConnected = authenticated && wallets.length > 0
+  const walletAddress = wallets[0]?.address ?? ''
   const [strategy, setStrategy] = useState<Vault['strategy']>({
     bidPrice: 0.01,
     sellPrice: 0.02,
@@ -57,10 +60,10 @@ export default function CreateVaultPage() {
   const [newVaultId, setNewVaultId] = useState('')
 
   const canProceed = useCallback(() => {
-    if (step === 0) return vaultName.trim().length >= 2 && walletConnected
+    if (step === 0) return vaultName.trim().length >= 2 && authenticated && wallets.length > 0
     if (step === 1) return strategy.sellPrice > strategy.bidPrice
     return true
-  }, [step, vaultName, walletConnected, strategy])
+  }, [step, vaultName, authenticated, wallets, strategy])
 
   async function deploy() {
     setDeploying(true)
@@ -76,6 +79,7 @@ export default function CreateVaultPage() {
     const vault: Vault = {
       id,
       name: vaultName,
+      walletAddress,
       created: Date.now(),
       strategy,
       funding: { usdc: parseFloat(usdcFunding) || 100, hbar: 1.0 },
@@ -165,7 +169,30 @@ export default function CreateVaultPage() {
             </div>
             <div className="space-y-2">
               <Label className="text-xs text-[#B0BEC5]">Wallet</Label>
-              <PrivyConnectMock onConnected={() => setWalletConnected(true)} />
+              {!ready ? (
+                <div className="flex items-center gap-2 text-sm text-[#B0BEC5]">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading wallet…
+                </div>
+              ) : walletConnected ? (
+                <div className="flex items-center gap-3 rounded-lg border border-[#26A69A]/40 bg-[#26A69A]/10 px-4 py-3">
+                  <div className="h-2 w-2 rounded-full bg-[#26A69A]" />
+                  <div>
+                    <p className="text-xs text-[#B0BEC5]">Wallet Connected</p>
+                    <p className="text-sm font-mono text-[#E1F5FE]">
+                      {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => login()}
+                  className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-semibold gap-2"
+                >
+                  <Wallet className="h-4 w-4" />
+                  Connect Wallet
+                </Button>
+              )}
             </div>
           </div>
         )}

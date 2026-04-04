@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Sora } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { Toaster } from 'sonner'
+import { Providers } from './providers'
 import './globals.css'
 
 const inter = Inter({
@@ -48,8 +49,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${inter.variable} ${sora.variable}`}>
       <body className="font-sans antialiased bg-[#081216] text-[#E1F5FE] min-h-screen">
-        {children}
-        <Toaster
+        <Providers>
+          {children}
+          <Toaster
           position="top-right"
           toastOptions={{
             style: {
@@ -60,6 +62,7 @@ export default function RootLayout({
           }}
         />
         <Analytics />
+        </Providers>
       </body>
     </html>
   )
