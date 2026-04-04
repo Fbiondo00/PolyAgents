@@ -1,7 +1,9 @@
 import { createVaultToken, mintVaultShares } from './hts-vault'
 import { createVaultAuditTopic, setActiveTopic, logToHCS } from './hcs-logger'
+import { registerAgentIdentity } from './agent-identity'
+import { scheduleVaultOperation } from './scheduler'
 import { getTokenInfo } from './mirror-node'
-import type { HederaVaultConfig, HederaContext, VaultTokenResult } from '@/types'
+import type { HederaVaultConfig, HederaContext, VaultTokenResult, AuditEventType } from '@/types'
 
 export async function initHederaVault(
   config: HederaVaultConfig
@@ -20,9 +22,9 @@ export async function initHederaVault(
   const { topicId, hashscanUrl: topicHashscan } = await createVaultAuditTopic(config.vaultId)
   setActiveTopic(topicId)
 
-  // 4. Log token creation event to HCS (creative data integrity use)
+  // 4. Log token creation event to HCS
   await logToHCS({
-    event: 'TOKEN_CREATED',
+    event: 'TOKEN_CREATED' as AuditEventType,
     vault_id: config.vaultId,
     token_id: tokenResult.tokenId,
     token_name: tokenResult.tokenName,
@@ -33,14 +35,41 @@ export async function initHederaVault(
 
   if (sharesMinted > 0) {
     await logToHCS({
-      event: 'TOKEN_MINTED',
+      event: 'TOKEN_MINTED' as AuditEventType,
       vault_id: config.vaultId,
       token_id: tokenResult.tokenId,
       shares: sharesMinted,
     })
   }
 
-  // 5. Verify via Mirror Node (data integrity)
+  // 5. Register HCS-14 Agent Identity (AI Payments Bonus #2)
+  const agentIdentity = await registerAgentIdentity(topicId)
+
+  await logToHCS({
+    event: 'AGENT_REGISTERED' as AuditEventType,
+    vault_id: config.vaultId,
+    agent_uaid: agentIdentity.uaid,
+    agent_topic_id: agentIdentity.topicId,
+  })
+
+  // 6. Create first scheduled transaction (AI Payments Bonus #3)
+  const scheduleResult = await scheduleVaultOperation({
+    vaultId: config.vaultId,
+    topicId,
+    memo: 'Initial vault rebalance checkpoint',
+  })
+
+  // 7. Log full initialization to HCS
+  await logToHCS({
+    event: 'VAULT_INITIALIZED' as AuditEventType,
+    vault_id: config.vaultId,
+    token_id: tokenResult.tokenId,
+    topic_id: topicId,
+    agent_uaid: agentIdentity.uaid,
+    schedule_id: scheduleResult.scheduleId,
+  })
+
+  // 8. Verify via Mirror Node (data integrity)
   let mirrorVerified = false
   try {
     const tokenInfo = await getTokenInfo(tokenResult.tokenId)
@@ -57,5 +86,10 @@ export async function initHederaVault(
     topicId,
     topicHashscan,
     initialSharesMinted: sharesMinted,
+    agentTopicId: agentIdentity.topicId,
+    agentUaid: agentIdentity.uaid,
+    agentHashscan: agentIdentity.hashscanUrl,
+    scheduleId: scheduleResult.scheduleId,
+    scheduleHashscan: scheduleResult.hashscanUrl,
   }
 }

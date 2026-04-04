@@ -4,12 +4,17 @@ import { checkHederaConnection } from '@/lib/hedera/client'
 import { initHederaVault } from '@/lib/hedera/vault-init'
 import { getAuditLogs, getTokenInfo } from '@/lib/hedera/mirror-node'
 import { setActiveTopic, logToHCS } from '@/lib/hedera/hcs-logger'
+import { payForAgentCycle } from '@/lib/hedera/agent-payment'
+import { scheduleVaultOperation, getScheduleStatus } from '@/lib/hedera/scheduler'
 import type {
   AuditEventType,
   HCSLogPayload,
   HederaContext,
   HCSMessage,
   TokenInfo,
+  PaymentReceipt,
+  ScheduleResult,
+  ScheduleStatus,
 } from '@/types'
 
 // ── Result Types ──────────────────────────────────────
@@ -45,6 +50,24 @@ export interface HCSLogActionResult {
   success: boolean
   sequenceNumber?: string
   topicId?: string
+  error?: string
+}
+
+export interface PaymentResult {
+  success: boolean
+  receipt?: PaymentReceipt
+  error?: string
+}
+
+export interface ScheduleActionResult {
+  success: boolean
+  schedule?: ScheduleResult
+  error?: string
+}
+
+export interface ScheduleStatusResult {
+  success: boolean
+  status?: ScheduleStatus
   error?: string
 }
 
@@ -130,6 +153,60 @@ export async function submitHCSLog(payload: HCSLogPayload & { topicId: string })
     })
 
     return { success: true, ...result }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return { success: false, error: message }
+  }
+}
+
+export async function executeAgentPayment(config: {
+  vaultId: string
+  topicId: string
+  callContext: string
+}): Promise<PaymentResult> {
+  try {
+    if (!config.vaultId || !config.topicId) {
+      return { success: false, error: 'Missing required fields: vaultId, topicId' }
+    }
+
+    const receipt = await payForAgentCycle(config.callContext, config.vaultId, config.topicId)
+    return { success: true, receipt }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return { success: false, error: message }
+  }
+}
+
+export async function createSchedule(config: {
+  vaultId: string
+  topicId: string
+  memo: string
+}): Promise<ScheduleActionResult> {
+  try {
+    if (!config.vaultId || !config.topicId) {
+      return { success: false, error: 'Missing required fields: vaultId, topicId' }
+    }
+
+    const schedule = await scheduleVaultOperation({
+      vaultId: config.vaultId,
+      topicId: config.topicId,
+      memo: config.memo,
+    })
+    return { success: true, schedule }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    return { success: false, error: message }
+  }
+}
+
+export async function fetchScheduleStatus(scheduleId: string): Promise<ScheduleStatusResult> {
+  try {
+    if (!scheduleId) {
+      return { success: false, error: 'Missing required param: scheduleId' }
+    }
+
+    const status = await getScheduleStatus(scheduleId)
+    return { success: true, status }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     return { success: false, error: message }

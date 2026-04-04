@@ -8,4 +8,8 @@ export {
   type HCSMessage,
   type TokenInfo,
   type HederaVaultConfig,
+  type PaymentReceipt,
+  type AgentIdentity,
+  type ScheduleResult,
+  type ScheduleStatus,
 } from './hedera'

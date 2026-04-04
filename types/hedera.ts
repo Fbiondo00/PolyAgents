@@ -8,6 +8,11 @@ export interface HederaContext {
   topicId: string
   topicHashscan: string
   initialSharesMinted: number
+  agentTopicId: string
+  agentUaid: string
+  agentHashscan: string
+  scheduleId: string
+  scheduleHashscan: string
 }
 
 // ── HTS Token ──
@@ -28,6 +33,9 @@ export type AuditEventType =
   | 'TOKEN_MINTED'
   | 'SHARES_TRANSFERRED'
   | 'AUDIT_LOG'
+  | 'PAYMENT_MADE'
+  | 'SCHEDULE_CREATED'
+  | 'AGENT_REGISTERED'
   | 'ERROR'
 
 export interface HCSLogPayload {
@@ -73,4 +81,35 @@ export interface HederaVaultConfig {
   vaultName: string
   policyHash?: string
   initialShares?: number
+}
+
+// ── Agent Payment ──
+
+export interface PaymentReceipt {
+  txId: string
+  amount: string
+  consensusTimestamp: string
+  hashscanUrl: string
+}
+
+// ── Agent Identity ──
+
+export interface AgentIdentity {
+  topicId: string
+  uaid: string
+  hashscanUrl: string
+}
+
+// ── Scheduled Transaction ──
+
+export interface ScheduleResult {
+  scheduleId: string
+  hashscanUrl: string
+}
+
+export interface ScheduleStatus {
+  executed: boolean
+  deleted: boolean
+  memo: string
+  creator: string | null
 }
