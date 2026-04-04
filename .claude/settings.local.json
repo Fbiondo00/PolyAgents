@@ -24,7 +24,9 @@
       "Bash(source ../.env.local)",
       "mcp__chrome2__take_snapshot",
       "mcp__chrome2__click",
-      "mcp__chrome2__fill"
+      "mcp__chrome2__fill",
+      "mcp__web-search-prime__web_search_prime",
+      "WebSearch"
     ]
   }
 }

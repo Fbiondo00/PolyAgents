@@ -34,7 +34,7 @@ function getConfig() {
   const privateKey = process.env.ARC_PRIVATE_KEY as `0x${string}`;
   const rpcUrl = process.env.ARC_TESTNET_RPC_URL;
 
-  const isLocal = !contractAddress || process.env.NODE_ENV === "development";
+  const isLocal = process.env.ARC_NETWORK === "local";
 
   if (isLocal) {
     return {
@@ -65,63 +65,98 @@ function getWalletClient() {
     : createArcWalletClient(cfg.privateKey, cfg.rpcUrl);
 }
 
+// ── Result types ──
+
+interface ArcError {
+  success: false
+  error: string
+}
+
 // ── Read actions ──
 
-export async function fetchMarket(marketId: number): Promise<MarketDataFormatted> {
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
-  return getMarketFormatted(publicClient, cfg.contractAddress, BigInt(marketId));
+export async function fetchMarket(marketId: number): Promise<MarketDataFormatted | ArcError> {
+  try {
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
+    return await getMarketFormatted(publicClient, cfg.contractAddress, BigInt(marketId));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
 
 export async function fetchMarketCount(): Promise<number> {
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
-  const count = await getMarketCount(publicClient, cfg.contractAddress);
-  return Number(count);
-}
-
-export async function fetchAllMarkets(): Promise<MarketDataFormatted[]> {
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
-  const count = await getMarketCount(publicClient, cfg.contractAddress);
-  const markets: MarketDataFormatted[] = [];
-
-  for (let i = 1; i <= Number(count); i++) {
-    const m = await getMarketFormatted(publicClient, cfg.contractAddress, BigInt(i));
-    markets.push(m);
+  try {
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
+    const count = await getMarketCount(publicClient, cfg.contractAddress);
+    return Number(count);
+  } catch {
+    return 0;
   }
-
-  return markets;
 }
 
-export async function fetchOdds(marketId: number): Promise<MarketOdds> {
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
-  return getOdds(publicClient, cfg.contractAddress, BigInt(marketId));
+export async function fetchAllMarkets(): Promise<MarketDataFormatted[] | ArcError> {
+  try {
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
+    const count = await getMarketCount(publicClient, cfg.contractAddress);
+    const markets: MarketDataFormatted[] = [];
+
+    for (let i = 1; i <= Number(count); i++) {
+      const m = await getMarketFormatted(publicClient, cfg.contractAddress, BigInt(i));
+      markets.push(m);
+    }
+
+    return markets;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
+}
+
+export async function fetchOdds(marketId: number): Promise<MarketOdds | ArcError> {
+  try {
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
+    return await getOdds(publicClient, cfg.contractAddress, BigInt(marketId));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
 
 export async function fetchUserPosition(
   marketId: number,
   userAddress: string,
-): Promise<PositionData> {
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
-  return getUserPosition(publicClient, cfg.contractAddress, BigInt(marketId), userAddress as Address);
+): Promise<PositionData | ArcError> {
+  try {
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
+    return await getUserPosition(publicClient, cfg.contractAddress, BigInt(marketId), userAddress as Address);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
 
 export async function fetchPayout(
   marketId: number,
   userAddress: string,
 ): Promise<string> {
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
-  const payout = await calculatePayout(
-    publicClient,
-    cfg.contractAddress,
-    BigInt(marketId),
-    userAddress as Address,
-  );
-  return formatUsdc(payout);
+  try {
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
+    const payout = await calculatePayout(
+      publicClient,
+      cfg.contractAddress,
+      BigInt(marketId),
+      userAddress as Address,
+    );
+    return formatUsdc(payout);
+  } catch {
+    return "0";
+  }
 }
 
 // ── Write actions (require wallet) ──
@@ -132,90 +167,112 @@ export async function createPredictionMarket(opts: {
   resolutionTime: Date;
   hederaTopicId: string;
   policyHash: string;
-}): Promise<{ marketId: number; txHash: string }> {
-  const walletClient = getWalletClient();
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
+}): Promise<{ success: true; marketId: number; txHash: string } | ArcError> {
+  try {
+    const walletClient = getWalletClient();
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
 
-  const result = await createMarket(walletClient, publicClient, cfg.contractAddress, opts);
-  return {
-    marketId: Number(result.marketId),
-    txHash: result.txHash,
-  };
+    const result = await createMarket(walletClient, publicClient, cfg.contractAddress, opts);
+    return {
+      success: true as const,
+      marketId: Number(result.marketId),
+      txHash: result.txHash,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
 
 export async function placeBetOnMarket(opts: {
   marketId: number;
   isYes: boolean;
   amountUsdc: number;
-}): Promise<{ txHash: string }> {
-  const walletClient = getWalletClient();
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
+}): Promise<{ success: true; txHash: string } | ArcError> {
+  try {
+    const walletClient = getWalletClient();
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
 
-  const txHash = await placeBet(
-    walletClient,
-    publicClient,
-    cfg.contractAddress,
-    cfg.usdcAddress,
-    {
-      marketId: BigInt(opts.marketId),
-      isYes: opts.isYes,
-      amountUsdc: opts.amountUsdc,
-    },
-  );
+    const txHash = await placeBet(
+      walletClient,
+      publicClient,
+      cfg.contractAddress,
+      cfg.usdcAddress,
+      {
+        marketId: BigInt(opts.marketId),
+        isYes: opts.isYes,
+        amountUsdc: opts.amountUsdc,
+      },
+    );
 
-  return { txHash };
+    return { success: true as const, txHash };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
 
 export async function resolvePredictionMarket(opts: {
   marketId: number;
   outcome: "YES" | "NO" | "VOIDED";
-}): Promise<{ txHash: string }> {
-  const walletClient = getWalletClient();
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
+}): Promise<{ success: true; txHash: string } | ArcError> {
+  try {
+    const walletClient = getWalletClient();
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
 
-  const outcomeMap: Record<string, Outcome> = {
-    YES: OUTCOME.YES,
-    NO: OUTCOME.NO,
-    VOIDED: OUTCOME.VOIDED,
-  };
+    const outcomeMap: Record<string, Outcome> = {
+      YES: OUTCOME.YES,
+      NO: OUTCOME.NO,
+      VOIDED: OUTCOME.VOIDED,
+    };
 
-  const txHash = await resolveMarket(
-    walletClient,
-    publicClient,
-    cfg.contractAddress,
-    BigInt(opts.marketId),
-    outcomeMap[opts.outcome],
-  );
+    const txHash = await resolveMarket(
+      walletClient,
+      publicClient,
+      cfg.contractAddress,
+      BigInt(opts.marketId),
+      outcomeMap[opts.outcome],
+    );
 
-  return { txHash };
+    return { success: true as const, txHash };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
 
 export async function claimMarketWinnings(
   marketId: number,
-): Promise<{ txHash: string; amount: string }> {
-  const walletClient = getWalletClient();
-  const publicClient = getPublicClient();
-  const cfg = getConfig();
+): Promise<{ success: true; txHash: string; amount: string } | ArcError> {
+  try {
+    const walletClient = getWalletClient();
+    const publicClient = getPublicClient();
+    const cfg = getConfig();
 
-  const payoutBefore = await calculatePayout(
-    publicClient,
-    cfg.contractAddress,
-    BigInt(marketId),
-    walletClient.account!.address,
-  );
+    const payoutBefore = await calculatePayout(
+      publicClient,
+      cfg.contractAddress,
+      BigInt(marketId),
+      walletClient.account!.address,
+    );
 
-  const txHash = await claimWinnings(
-    walletClient,
-    publicClient,
-    cfg.contractAddress,
-    BigInt(marketId),
-  );
+    const txHash = await claimWinnings(
+      walletClient,
+      publicClient,
+      cfg.contractAddress,
+      BigInt(marketId),
+    );
 
-  return {
-    txHash,
-    amount: formatUsdc(payoutBefore),
-  };
+    return {
+      success: true as const,
+      txHash,
+      amount: formatUsdc(payoutBefore),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return { success: false as const, error: message };
+  }
 }
