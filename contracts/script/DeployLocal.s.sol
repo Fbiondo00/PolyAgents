@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {VaultPilotMarket} from "../src/VaultPilotMarket.sol";
+import {PolyAgentsMarket} from "../src/PolyAgentsMarket.sol";
 
 contract MockUSDC is ERC20 {
     constructor() ERC20("USD Coin", "USDC") {}
@@ -28,9 +28,9 @@ contract DeployLocal is Script {
         usdc.mint(deployer, 10_000 * 1e6);
         console2.log("Minted 10,000 USDC to deployer:", deployer);
 
-        // 3. Deploy VaultPilotMarket
-        VaultPilotMarket market = new VaultPilotMarket(address(usdc));
-        console2.log("VaultPilotMarket deployed at:", address(market));
+        // 3. Deploy PolyAgentsMarket
+        PolyAgentsMarket market = new PolyAgentsMarket(address(usdc));
+        console2.log("PolyAgentsMarket deployed at:", address(market));
 
         // 4. Fund a test user (anvil account #1)
         address testUser = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
@@ -42,7 +42,7 @@ contract DeployLocal is Script {
         console2.log("");
         console2.log("=== Deployment Summary ===");
         console2.log("USDC:", address(usdc));
-        console2.log("VaultPilotMarket:", address(market));
+        console2.log("PolyAgentsMarket:", address(market));
         console2.log("Deployer:", deployer);
     }
 }

@@ -1,4 +1,4 @@
-No, VaultPilot doesn't need Supabase (or any traditional database) for the ETHGlobal prototype. The architecture relies entirely on sponsor-native on-chain primitives: Arc EVM contracts for positions, Hedera HTS for tokens/HBAR payments/HCS logs (via JS SDK), ENS text records for commitments, and Polymarket API for market data—no off-chain persistence required beyond localStorage for the frontend demo.
+No, PolyAgents doesn't need Supabase (or any traditional database) for the ETHGlobal prototype. The architecture relies entirely on sponsor-native on-chain primitives: Arc EVM contracts for positions, Hedera HTS for tokens/HBAR payments/HCS logs (via JS SDK), ENS text records for commitments, and Polymarket API for market data—no off-chain persistence required beyond localStorage for the frontend demo.
 Why No Database
 Hedera HCS handles immutable decision/access logs (one topic per vault). Query via Mirror Node REST API.[1]
 Arc EVM stores USDC positions/PnL directly.[3]

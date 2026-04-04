@@ -18,10 +18,10 @@ Aggiungi al tuo `.env`:
 # ENS
 ENS_OWNER_PRIVATE_KEY=0x...          # chiave del controller del nome ENS
 ENS_REGISTRY_ADDRESS=0x00000000000C2e074eC69A0dFb2997BA6C7d2e1e  # mainnet o sepolia
-ENS_BASE_DOMAIN=vaultpilot.eth       # nome registrato su ENS
+ENS_BASE_DOMAIN=polyagents.eth       # nome registrato su ENS
 ```
 
-Registra `vaultpilot.eth` su https://app.ens.domains (mainnet) o usa il testnet Sepolia ENS deployment.
+Registra `polyagents.eth` su https://app.ens.domains (mainnet) o usa il testnet Sepolia ENS deployment.
 
 🔧 STEP 1 — ENS Client Base (10 minuti)
 
@@ -49,7 +49,7 @@ export const walletClient = createWalletClient({
 
 → Copre: Requisito core del bounty — uso creativo di ENS che migliora chiaramente il prodotto
 
-Il concetto: quando un vault viene creato, calcoliamo `keccak256(strategyParams)` e lo scriviamo come text record `policy.commitment` sul subname del vault (es. `vault-abc.vaultpilot.eth`). Questo è un **commitment scheme**: l'hash è pubblico ma la policy rimane privata. Chiunque può verificare che l'agente sta seguendo la policy originale confrontando l'hash.
+Il concetto: quando un vault viene creato, calcoliamo `keccak256(strategyParams)` e lo scriviamo come text record `policy.commitment` sul subname del vault (es. `vault-abc.polyagents.eth`). Questo è un **commitment scheme**: l'hash è pubblico ma la policy rimane privata. Chiunque può verificare che l'agente sta seguendo la policy originale confrontando l'hash.
 
 Crea `src/ens/policy-commitment.ts`:
 ```typescript
@@ -91,14 +91,14 @@ export function computePolicyHash(strategy: {
 /**
  * Write the policy hash as an ENS text record.
  * Key: "policy.commitment"
- * Subname: {vaultId}.vaultpilot.eth
+ * Subname: {vaultId}.polyagents.eth
  */
 export async function commitPolicyHash(
   vaultId: string,
   policyHash: `0x${string}`
 ): Promise<string> {
   // setText(bytes32 node, string key, string value)
-  const node = namehash(`${vaultId}.vaultpilot.eth`);
+  const node = namehash(`${vaultId}.polyagents.eth`);
 
   const txHash = await walletClient.writeContract({
     address: ENS_PUBLIC_RESOLVER,
@@ -120,7 +120,7 @@ export async function commitPolicyHash(
   });
 
   await publicClient.waitForTransactionReceipt({ hash: txHash });
-  console.log(`✅ Policy committed to ENS: ${vaultId}.vaultpilot.eth → ${policyHash.slice(0, 16)}…`);
+  console.log(`✅ Policy committed to ENS: ${vaultId}.polyagents.eth → ${policyHash.slice(0, 16)}…`);
   return txHash;
 }
 ```
@@ -154,7 +154,7 @@ export async function updateAgentStats(
   vaultId: string,
   stats: AgentStats
 ): Promise<string[]> {
-  const node = namehash(`${vaultId}.vaultpilot.eth`);
+  const node = namehash(`${vaultId}.polyagents.eth`);
 
   const updates: [string, string][] = [
     ["agent.flips", stats.flips.toString()],
@@ -189,7 +189,7 @@ export async function updateAgentStats(
     txHashes.push(txHash);
   }
 
-  console.log(`✅ Agent stats updated on ENS for ${vaultId}.vaultpilot.eth`);
+  console.log(`✅ Agent stats updated on ENS for ${vaultId}.polyagents.eth`);
   return txHashes;
 }
 
@@ -199,7 +199,7 @@ export async function updateAgentStats(
 export async function readAgentStats(
   vaultId: string
 ): Promise<Record<string, string>> {
-  const node = namehash(`${vaultId}.vaultpilot.eth`);
+  const node = namehash(`${vaultId}.polyagents.eth`);
   const keys = [
     "policy.commitment",
     "agent.flips",
@@ -238,7 +238,7 @@ export async function readAgentStats(
 
 🔧 STEP 4 — Subname Creation (10 minuti)
 
-Ogni vault ha bisogno di un subname sotto `vaultpilot.eth`. Questo viene creato una volta alla creazione del vault.
+Ogni vault ha bisogno di un subname sotto `polyagents.eth`. Questo viene creato una volta alla creazione del vault.
 
 Crea `src/ens/subname.ts`:
 ```typescript
@@ -248,13 +248,13 @@ import { labelhash, namehash } from "viem/ens";
 const ENS_REGISTRY = "0x00000000000C2e074eC69A0dFb2997BA6C7d2e1e" as const;
 
 /**
- * Create a subname for a new vault under vaultpilot.eth.
+ * Create a subname for a new vault under polyagents.eth.
  * Sets the resolver to the public resolver.
  */
 export async function createVaultSubname(
   vaultId: string
 ): Promise<string> {
-  const parentName = "vaultpilot.eth";
+  const parentName = "polyagents.eth";
   const parent Node = namehash(parentName);
   const label = vaultId; // e.g. "vault-abc"
   const fullNode = namehash(`${label}.${parentName}`);
@@ -342,7 +342,7 @@ export async function initVaultENS(opts: {
     lastTrade: new Date().toISOString(),
   });
 
-  const ensName = `${vaultId}.vaultpilot.eth`;
+  const ensName = `${vaultId}.polyagents.eth`;
   console.log(`✅ ENS fully initialized: ${ensName}`);
   console.log(`   Policy hash: ${policyHash.slice(0, 16)}…`);
 
@@ -377,7 +377,7 @@ Aggiungi una sezione nella pagina Policy (`/vault/[id]/policy`) per mostrare la 
 ```typescript
 // components/ens-verification.tsx
 // Mostra:
-// 1. ENS name: vault-abc.vaultpilot.eth
+// 1. ENS name: vault-abc.polyagents.eth
 // 2. Policy hash on-chain: 0xabcd...
 // 3. Current local hash:   0xabcd...
 // 4. Match status: ✅ VERIFIED or ⚠️ MISMATCH
@@ -397,7 +397,7 @@ Vault Creation Wizard
            │
            ▼
 ┌─────────────────────────┐
-│  createVaultSubname()    │  vault-abc.vaultpilot.eth
+│  createVaultSubname()    │  vault-abc.polyagents.eth
 │  + setResolver()         │
 └──────────┬──────────────┘
            │

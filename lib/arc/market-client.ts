@@ -1,5 +1,5 @@
 /**
- * VaultPilotMarket client — typed wrappers around the on-chain contract.
+ * PolyAgentsMarket client — typed wrappers around the on-chain contract.
  *
  * Supports two usage modes:
  *   1. Server-side: pass a viem PublicClient/WalletClient (for agent scripts, API routes)
@@ -19,7 +19,7 @@ import {
   defineChain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { VAULTPILOT_ABI, OUTCOME, type Outcome } from "./abi";
+import { POLYAGENTS_ABI, OUTCOME, type Outcome } from "./abi";
 
 // ── Chain definitions ──
 
@@ -149,7 +149,7 @@ export async function getMarket(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw: any = await publicClient.readContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "getMarket",
     args: [marketId],
   });
@@ -191,7 +191,7 @@ export async function getUserPosition(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const raw: any = await publicClient.readContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "getUserPosition",
     args: [marketId, user],
   });
@@ -210,7 +210,7 @@ export async function getOdds(
 ): Promise<MarketOdds> {
   const [yesOdds, noOdds] = await publicClient.readContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "getOdds",
     args: [marketId],
   }) as [bigint, bigint];
@@ -229,7 +229,7 @@ export async function calculatePayout(
 ): Promise<bigint> {
   return publicClient.readContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "calculatePayout",
     args: [marketId, user],
   }) as Promise<bigint>;
@@ -241,7 +241,7 @@ export async function getMarketCount(
 ): Promise<bigint> {
   return publicClient.readContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "marketCount",
     args: [],
   }) as Promise<bigint>;
@@ -294,7 +294,7 @@ export async function createMarket(
 
   const txHash = await walletClient.writeContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "createMarket",
     args: [
       opts.question,
@@ -340,7 +340,7 @@ export async function placeBet(
   // 2. Place bet
   const txHash = await walletClient.writeContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "placeBet",
     args: [opts.marketId, opts.isYes, amount],
     account: walletClient.account,
@@ -360,7 +360,7 @@ export async function resolveMarket(
 ): Promise<Hash> {
   const txHash = await walletClient.writeContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "resolveMarket",
     args: [marketId, outcome],
     account: walletClient.account,
@@ -379,7 +379,7 @@ export async function claimWinnings(
 ): Promise<Hash> {
   const txHash = await walletClient.writeContract({
     address: contractAddress,
-    abi: VAULTPILOT_ABI,
+    abi: POLYAGENTS_ABI,
     functionName: "claimWinnings",
     args: [marketId],
     account: walletClient.account,

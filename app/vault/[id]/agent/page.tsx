@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { getVaultById, saveVault, addAuditEvent, generateAuditId, updateVaultStats } from '@/lib/store'
-import { Vault } from '@/lib/types'
+import { Vault } from '@/types'
 import type { PaymentReceipt } from '@/types'
 import { executeAgentPayment, checkHealth } from '@/actions/hedera'
 import { getOrCreateEngine } from '@/lib/engine/strategy/engine'

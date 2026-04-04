@@ -13,7 +13,7 @@ Hard requirements:
   Detailed documentation
   Link to GitHub/Replit repo
   Must deploy contracts to Arc
-Your fit: Direct. Arc's brief lists "governance & enterprise forecasting with identity, compliance, auditability" — the exact framing of VaultPilot. USDC-native vault on Arc EVM is structural, not cosmetic.
+Your fit: Direct. Arc's brief lists "governance & enterprise forecasting with identity, compliance, auditability" — the exact framing of PolyAgents. USDC-native vault on Arc EVM is structural, not cosmetic.
 Hedera · No Solidity Allowed · $1,000 each · up to 3 teams
 What they want: A working app using only the Hedera JS/TS or Python SDK. No Solidity, no smart contracts. Must combine at least two native Hedera services.
 Hard requirements:
@@ -44,7 +44,7 @@ This is your free slot and the cleanest add to the existing stack.
 Why ENS Most Creative and not something else:
 Every other easy prize has a catch. Dynamic JS SDK requires using their auth flow which conflicts with your existing wallet setup. WalletConnect AppKit requires two non-EVM chain ecosystems and Arc + Hedera are both EVM-compatible. Unlink is Base Sepolia only, different chain from Arc. Chainlink Price Feeds may not be deployed on Arc yet.
 ENS needs only viem which you're already using, and the "Most Creative" track has a genuinely high creative bar — meaning casual teams won't win it by just adding name resolution. Your use case is novel enough to win.
-The creative use: Store a keccak256 hash of the vault's policy config as an ENS text record key policy.commitment on a vault subname (vault-abc.vaultpilot.eth). Anyone can verify the agent ran exactly the policy it was initialized with — without ever seeing the policy content. You also write live agent stats (agent.lastTrade, agent.pnl, agent.mode) as text records, turning the vault's ENS name into a public identity card readable by any ENS-aware tool. This is cryptographic commitment via text records — something ENS judges will not have seen before.
+The creative use: Store a keccak256 hash of the vault's policy config as an ENS text record key policy.commitment on a vault subname (vault-abc.polyagents.eth). Anyone can verify the agent ran exactly the policy it was initialized with — without ever seeing the policy content. You also write live agent stats (agent.lastTrade, agent.pnl, agent.mode) as text records, turning the vault's ENS name into a public identity card readable by any ENS-aware tool. This is cryptographic commitment via text records — something ENS judges will not have seen before.
 ENS Most Creative rules:
   ENS must clearly improve the product — not cosmetic
   Demo must be functional, no hard-coded values
@@ -66,7 +66,7 @@ Funded testnet address
 Get Arc testnet USDC
 Arc Discord faucet
 USDC balance
-Register vaultpilot.eth subname
+Register polyagents.eth subname
 ENS app
 ENS name ready
 Init Next.js project with viem, @hashgraph/sdk, @hashgraph/hedera-agent-kit

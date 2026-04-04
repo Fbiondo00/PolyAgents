@@ -13,3 +13,8 @@ export {
   type ScheduleResult,
   type ScheduleStatus,
 } from './hedera'
+export {
+  type AgentHooks,
+  type CycleResult,
+  type AgentStatus,
+} from './agent'

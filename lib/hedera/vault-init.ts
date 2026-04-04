@@ -3,11 +3,16 @@ import { createVaultAuditTopic, setActiveTopic, logToHCS } from './hcs-logger'
 import { registerAgentIdentity } from './agent-identity'
 import { scheduleVaultOperation } from './scheduler'
 import { getTokenInfo } from './mirror-node'
+import { getHederaClient } from './client'
 import type { HederaVaultConfig, HederaContext, VaultTokenResult, AuditEventType } from '@/types'
 
 export async function initHederaVault(
   config: HederaVaultConfig
 ): Promise<HederaContext> {
+  // 0. Resolve treasury account from operator
+  const { operatorId } = getHederaClient()
+  const treasuryAccountId = operatorId.toString()
+
   // 1. Create HTS vault token (No Solidity Service #1)
   const tokenResult: VaultTokenResult = await createVaultToken(config.vaultName, config.vaultId)
 
@@ -91,5 +96,7 @@ export async function initHederaVault(
     agentHashscan: agentIdentity.hashscanUrl,
     scheduleId: scheduleResult.scheduleId,
     scheduleHashscan: scheduleResult.hashscanUrl,
+    treasuryAccountId,
+    treasuryHashscan: `https://hashscan.io/testnet/account/${treasuryAccountId}`,
   }
 }

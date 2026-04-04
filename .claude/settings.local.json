@@ -5,7 +5,26 @@
       "Bash(npm install:*)",
       "Bash(npx next dev --port 3000)",
       "Bash(curl:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "mcp__chrome2__get_console_message",
+      "mcp__chrome2__evaluate_script",
+      "mcp__chrome2__wait_for",
+      "mcp__chrome2__list_network_requests",
+      "Bash(lsof:*)",
+      "Bash(xargs:*)",
+      "Bash(anvil:*)",
+      "mcp__zread__search_doc",
+      "mcp__zread__read_file",
+      "Bash(forge script:*)",
+      "Bash(npm run dev:*)",
+      "Bash(forge build:*)",
+      "mcp__chrome2__navigate_page",
+      "mcp__chrome2__take_screenshot",
+      "mcp__chrome2__list_console_messages",
+      "Bash(source ../.env.local)",
+      "mcp__chrome2__take_snapshot",
+      "mcp__chrome2__click",
+      "mcp__chrome2__fill"
     ]
   }
 }

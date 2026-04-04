@@ -6,15 +6,15 @@
 
 ### How are you using this Protocol / API?
 
-PolyAgents uses Arc as the USDC-native settlement layer for its AI-powered prediction market vault. The VaultPilotMarket smart contract (Solidity, deployed on Arc Testnet) implements binary YES/NO markets with USDC as both the gas token and betting currency. An autonomous AI agent creates markets based on real-world BTC price signals (5-minute windows), places USDC-denominated bets via passive market-making ($0.01 bids, flipped at $0.02), and resolves markets against actual price outcomes. Arc's deterministic finality (~2s) and native USDC gas eliminate ETH-volatility friction — every fee, bet, and payout is in stable dollars, making the economics predictable for both the agent and end users. The contract includes a 0.5% protocol fee, minimum 1 USDC bet, and integrates with Hedera HCS for immutable audit logging of every market creation and resolution.
+PolyAgents uses Arc as the USDC-native settlement layer for its AI-powered prediction market vault. The PolyAgentsMarket smart contract (Solidity, deployed on Arc Testnet) implements binary YES/NO markets with USDC as both the gas token and betting currency. An autonomous AI agent creates markets based on real-world BTC price signals (5-minute windows), places USDC-denominated bets via passive market-making ($0.01 bids, flipped at $0.02), and resolves markets against actual price outcomes. Arc's deterministic finality (~2s) and native USDC gas eliminate ETH-volatility friction — every fee, bet, and payout is in stable dollars, making the economics predictable for both the agent and end users. The contract includes a 0.5% protocol fee, minimum 1 USDC bet, and integrates with Hedera HCS for immutable audit logging of every market creation and resolution.
 
 **Target bounty:** Best Prediction Markets Built on Arc with Real-World Signal — $3,000
 
 ### Link to the line of code where the tech is used
 
-- Smart contract: `contracts/src/VaultPilotMarket.sol` — VaultPilotMarket.sol (createMarket, placeBet, resolveMarket, claimWinnings, getOdds)
+- Smart contract: `contracts/src/PolyAgentsMarket.sol` — PolyAgentsMarket.sol (createMarket, placeBet, resolveMarket, claimWinnings, getOdds)
 - TypeScript client: `lib/arc/market-client.ts` — viem-based Arc integration (createMarket, placeBet, resolveMarket, getMarket, getOdds, getMarketCount)
-- Contract ABI: `lib/arc/abi.ts` — typed VAULTPILOT_ABI with Outcome enum and function signatures
+- Contract ABI: `lib/arc/abi.ts` — typed POLYAGENTS_ABI with Outcome enum and function signatures
 - Arc chain config (Arc Testnet, Chain ID 1120, USDC gas): `lib/arc/market-client.ts:26-45` (arcTestnet + localAnvil chain definitions)
 - Server actions (Next.js): `actions/arc/markets.ts` — fetchAllMarkets, createPredictionMarket, placeBetOnMarket, resolvePredictionMarket, claimMarketWinnings
 - Local deploy script: `contracts/script/DeployLocal.s.sol`
@@ -37,7 +37,7 @@ USDC as the native gas token is a genuinely better UX than ETH-denominated gas f
 
 ### How are you using this Protocol / API?
 
-PolyAgents uses ENS as a cryptographic commitment and public identity layer for autonomous trading agents — going far beyond simple name resolution. When a vault is created, the strategy parameters are hashed via `keccak256(strategyJSON)` and the resulting commitment hash is written as a `policy.commitment` text record on a vault subname (e.g., `vault-abc.vaultpilot.eth`). This creates a verifiable on-chain guarantee: anyone can confirm the agent is following its original declared strategy by comparing the on-chain hash against the current strategy, without the actual strategy parameters ever being public. Additionally, live agent statistics (flips executed, PnL, inventory counts, trading mode, last trade timestamp) are written as individual text records (`agent.flips`, `agent.pnl`, `agent.inventory`, `agent.mode`, `agent.lastTrade`), turning the vault's ENS name into a real-time public identity card readable by any ENS-aware tool. This is a novel pattern: ENS as a public verification layer for autonomous AI agents.
+PolyAgents uses ENS as a cryptographic commitment and public identity layer for autonomous trading agents — going far beyond simple name resolution. When a vault is created, the strategy parameters are hashed via `keccak256(strategyJSON)` and the resulting commitment hash is written as a `policy.commitment` text record on a vault subname (e.g., `vault-abc.polyagents.eth`). This creates a verifiable on-chain guarantee: anyone can confirm the agent is following its original declared strategy by comparing the on-chain hash against the current strategy, without the actual strategy parameters ever being public. Additionally, live agent statistics (flips executed, PnL, inventory counts, trading mode, last trade timestamp) are written as individual text records (`agent.flips`, `agent.pnl`, `agent.inventory`, `agent.mode`, `agent.lastTrade`), turning the vault's ENS name into a real-time public identity card readable by any ENS-aware tool. This is a novel pattern: ENS as a public verification layer for autonomous AI agents.
 
 **Target bounty:** ENS — Most Creative Use — $2,500
 
@@ -45,7 +45,7 @@ PolyAgents uses ENS as a cryptographic commitment and public identity layer for 
 
 - Policy hash commitment (keccak256 + setText): `docs/sponsors/ens.md:54-126` — `src/ens/policy-commitment.ts`
 - Live agent stats as text records: `docs/sponsors/ens.md:134-237` — `src/ens/agent-stats.ts`
-- Subname creation under vaultpilot.eth: `docs/sponsors/ens.md:243-308` — `src/ens/subname.ts`
+- Subname creation under polyagents.eth: `docs/sponsors/ens.md:243-308` — `src/ens/subname.ts`
 - Full vault ENS initialization flow: `docs/sponsors/ens.md:314-351` — `src/ens/vault-ens-init.ts`
 - Frontend policy hash display: `app/vault/[id]/policy/page.tsx`
 

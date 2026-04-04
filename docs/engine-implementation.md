@@ -2,7 +2,7 @@
 
 Maps the working Python engine (`ShareBot/Bitcoin5min/bot/`) to Next.js server actions for PolyAgents. Reference: `docs/engine-proposal.md` for the full Supabase spec.
 
-**Deploy target:** Vercel (serverless functions + cron). **Durable execution:** [workflow.dev](https://useworkflow.dev). **On-chain settlement:** `VaultPilotMarket.sol` on Arc testnet.
+**Deploy target:** Vercel (serverless functions + cron). **Durable execution:** [workflow.dev](https://useworkflow.dev). **On-chain settlement:** `PolyAgentsMarket.sol` on Arc testnet.
 
 ---
 
@@ -15,9 +15,9 @@ The contracts are already implemented and tested locally:
 | Contract | Address | Purpose |
 |---|---|---|
 | `MockUSDC` | `0x5FbDB2315678afecb367f032d93F642f64180aa3` | Testnet USDC (6 decimals, mintable) |
-| `VaultPilotMarket` | `0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0` | Binary prediction market (213 lines) |
+| `PolyAgentsMarket` | `0x9fe46736679d2d9a65f0992f2272de9f3c7fa6e0` | Binary prediction market (213 lines) |
 
-**Source:** `contracts/src/VaultPilotMarket.sol`
+**Source:** `contracts/src/PolyAgentsMarket.sol`
 
 ### Contract Interface
 
@@ -46,8 +46,8 @@ const ARC_TESTNET = {
   rpcUrls: { default: { http: ["https://rpc.testnet.arc.network"] } },
 } as const;
 
-// ABI subset — generate full ABI with: forge inspect VaultPilotMarket abi
-const VAULTPILOT_ABI = [
+// ABI subset — generate full ABI with: forge inspect PolyAgentsMarket abi
+const POLYAGENTS_ABI = [
   { name: "createMarket", type: "function", stateMutability: "nonpayable",
     inputs: [
       { name: "question", type: "string" }, { name: "category", type: "string" },
@@ -68,7 +68,7 @@ const VAULTPILOT_ABI = [
     outputs: [{ name: "yesOdds", type: "uint256" }, { name: "noOdds", type: "uint256" }] },
 ] as const;
 
-export function createVaultPilotClient(privateKey: `0x${string}`, contractAddress: `0x${string}`) {
+export function createPolyAgentsClient(privateKey: `0x${string}`, contractAddress: `0x${string}`) {
   const account = privateKeyToAccount(privateKey);
   const publicClient = createPublicClient({ chain: ARC_TESTNET, transport: http() });
   const walletClient = createWalletClient({ chain: ARC_TESTNET, account, transport: http() });
@@ -82,7 +82,7 @@ export function createVaultPilotClient(privateKey: `0x${string}`, contractAddres
       hederaTopicId: string; policyHash: string;
     }) {
       const hash = await walletClient.writeContract({
-        address: contractAddress, abi: VAULTPILOT_ABI, functionName: "createMarket",
+        address: contractAddress, abi: POLYAGENTS_ABI, functionName: "createMarket",
         args: [params.question, params.category, BigInt(Math.floor(params.resolutionTime.getTime() / 1000)),
                params.hederaTopicId, params.policyHash],
       });
@@ -92,7 +92,7 @@ export function createVaultPilotClient(privateKey: `0x${string}`, contractAddres
 
     async placeBet(marketId: bigint, isYes: boolean, amountUsdc: number) {
       const hash = await walletClient.writeContract({
-        address: contractAddress, abi: VAULTPILOT_ABI, functionName: "placeBet",
+        address: contractAddress, abi: POLYAGENTS_ABI, functionName: "placeBet",
         args: [marketId, isYes, parseUnits(amountUsdc.toString(), 6)],
       });
       await publicClient.waitForTransactionReceipt({ hash });
@@ -101,7 +101,7 @@ export function createVaultPilotClient(privateKey: `0x${string}`, contractAddres
 
     async resolveMarket(marketId: bigint, outcomeYes: boolean) {
       const hash = await walletClient.writeContract({
-        address: contractAddress, abi: VAULTPILOT_ABI, functionName: "resolveMarket",
+        address: contractAddress, abi: POLYAGENTS_ABI, functionName: "resolveMarket",
         args: [marketId, outcomeYes ? 1 : 2],
       });
       await publicClient.waitForTransactionReceipt({ hash });
@@ -110,7 +110,7 @@ export function createVaultPilotClient(privateKey: `0x${string}`, contractAddres
 
     async getOdds(marketId: bigint) {
       return publicClient.readContract({
-        address: contractAddress, abi: VAULTPILOT_ABI, functionName: "getOdds",
+        address: contractAddress, abi: POLYAGENTS_ABI, functionName: "getOdds",
         args: [marketId],
       }) as Promise<[bigint, bigint]>;
     },
@@ -168,7 +168,7 @@ Client (setInterval 250ms)
   │     │     └─ reconcile()                 ← every N cycles, state consistency check
   │     ├─ computeRunPnL()                   ← realized + unrealized snapshot
   │     ├─ Persist to Supabase
-  │     ├─ Mirror bet to VaultPilotMarket.sol on Arc (viem)
+  │     ├─ Mirror bet to PolyAgentsMarket.sol on Arc (viem)
   │     ├─ Pay 0.001 HBAR → Hedera (agent micropayment)
   │     ├─ Log decision to HCS topic (immutable audit)
   │     └─ Update ENS text records (live stats)
@@ -1684,8 +1684,8 @@ Python runs a tight 4Hz `asyncio` while-loop. In Next.js, three mechanisms combi
 2. **Vercel cron** (every 60s) → reconciliation + heartbeat fallback
 3. **workflow.dev** → durable strategy execution that survives serverless limitations
 
-### On-Chain Settlement via VaultPilotMarket.sol
-Python uses `py-clob-client` for direct Polymarket CLOB trading. PolyAgents adds an on-chain layer: bets are mirrored to `VaultPilotMarket.sol` on Arc testnet via viem, with USDC as the gas token. This satisfies the Arc "Best Prediction Markets" bounty.
+### On-Chain Settlement via PolyAgentsMarket.sol
+Python uses `py-clob-client` for direct Polymarket CLOB trading. PolyAgents adds an on-chain layer: bets are mirrored to `PolyAgentsMarket.sol` on Arc testnet via viem, with USDC as the gas token. This satisfies the Arc "Best Prediction Markets" bounty.
 
 ### State Persistence
 Python writes `runtime_state.json` on every loop iteration. Next.js writes to Supabase tables. The engine re-loads state at the start of each cycle. workflow.dev adds its own step-level persistence.

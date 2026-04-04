@@ -178,7 +178,7 @@ Live: agent.flips, agent.pnl, agent.inventory, agent.mode
 **Repo includes:** Full source -  faucet guide -  contract addresses -  demo video -  architecture diagram.[1]
 
 Sources
-[1] VaultPilot_Tasks.csv https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/342456/4aa37e8e-ef9c-478e-a5fa-596eb84d9e54/VaultPilot_Tasks.csv
+[1] PolyAgents_Tasks.csv https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/342456/4aa37e8e-ef9c-478e-a5fa-596eb84d9e54/PolyAgents_Tasks.csv
 [2] ETHGlobal Cannes https://ethglobal.com/events/cannes/info/details
-[3] VaultPilot_Pitch_v2.pptx https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/342456/6de65ee5-fe39-486b-bf3f-8c4bd1f7c88b/VaultPilot_Pitch_v2.pptx
-[4] VaultPilot_Architecture.html https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/342456/05b71773-3c06-487f-8e27-f7a8c492aef0/VaultPilot_Architecture.html
+[3] PolyAgents_Pitch_v2.pptx https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/342456/6de65ee5-fe39-486b-bf3f-8c4bd1f7c88b/PolyAgents_Pitch_v2.pptx
+[4] PolyAgents_Architecture.html https://ppl-ai-file-upload.s3.amazonaws.com/web/direct-files/attachments/342456/05b71773-3c06-487f-8e27-f7a8c492aef0/PolyAgents_Architecture.html

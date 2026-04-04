@@ -11,7 +11,7 @@
 
 - [ ] Register Hedera testnet account at `portal.hedera.com`
 - [ ] Fund Hedera account via faucet (>=100 HBAR)
-- [ ] Register `vaultpilot.eth` on ENS (or confirm Sepolia ENS)
+- [ ] Register `polyagents.eth` on ENS (or confirm Sepolia ENS)
 - [ ] Fund Sepolia wallet with >=0.1 ETH for ENS writes
 - [ ] Verify `@hashgraph/sdk` works in isolated script (prints balance)
 - [ ] Verify viem can read ENS text record on Sepolia (`getText()` returns value)
@@ -46,7 +46,7 @@
 | T+02:30 | ENS client (Sepolia public + wallet clients) | `lib/ens/client.ts` | ENS | `getChainId()` returns 11155111 |
 | T+02:40 | Policy hash commitment (keccak256 + setText) | `lib/ens/policy-commitment.ts` | **ENS $2.5K core** | Read back matches computed hash |
 | T+03:00 | Agent stats text records (5 keys per vault) | `lib/ens/agent-stats.ts` | ENS | Read back shows updated values |
-| T+03:15 | Subname creation | `lib/ens/subname.ts` | ENS | `vault-test.vaultpilot.eth` resolves |
+| T+03:15 | Subname creation | `lib/ens/subname.ts` | ENS | `vault-test.polyagents.eth` resolves |
 | T+03:25 | ENS vault orchestrator | `lib/ens/vault-ens-init.ts` | ENS | Full setup: subname + hash + stats |
 | T+03:40 | **Validate Phase 2 end-to-end** -- run `initVaultENS()` standalone | -- | ENS | 6 text records verified |
 | T+04:00 | **CHECKPOINT 2: Sync with Pietro** -- share Hedera/ENS types | -- | Cross-cutting | Pietro confirms interface |
@@ -223,7 +223,7 @@ Reserved for: Hedera SDK issues, ENS Sepolia problems, merge conflicts, demo fai
 
 ### ENS -- Most Creative ($2,500)
 
-- [ ] Vault subname created (`{vaultId}.vaultpilot.eth`)
+- [ ] Vault subname created (`{vaultId}.polyagents.eth`)
 - [ ] Policy hash committed as `policy.commitment` text record
 - [ ] Agent stats updatable as text records (5 keys)
 - [ ] Verification UI shows on-chain vs local hash match

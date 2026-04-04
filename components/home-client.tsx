@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { usePrivy, useWallets } from '@privy-io/react-auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { initDemoVault, getVaults } from '@/lib/store'
@@ -41,14 +42,23 @@ const DIAGRAM_NODES = [
 ]
 
 export function HomeClient() {
-  const [vaults, setVaults] = useState<Vault[]>([])
+  const [allVaults, setAllVaults] = useState<Vault[]>([])
   const [mounted, setMounted] = useState(false)
+  const { authenticated } = usePrivy()
+  const { wallets } = useWallets()
+  const walletAddress = authenticated && wallets.length > 0 ? wallets[0].address.toLowerCase() : null
 
   useEffect(() => {
     initDemoVault()
-    setVaults(getVaults())
+    setAllVaults(getVaults())
     setMounted(true)
   }, [])
+
+  // Filter: show demo vault always, user vaults only if wallet matches
+  const vaults = allVaults.filter(v => {
+    if (!v.walletAddress) return true // demo vault
+    return v.walletAddress.toLowerCase() === walletAddress
+  })
 
   return (
     <div className="min-h-screen bg-[#081216] pb-20 md:pb-0">
