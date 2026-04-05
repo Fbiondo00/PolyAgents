@@ -9,8 +9,12 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@ai-sdk/gateway": "^3.0.88",
+    "@circle-fin/adapter-viem-v2": "^1.8.1",
+    "@circle-fin/app-kit": "^1.2.1",
     "@hashgraph/sdk": "^2.81.0",
     "@hookform/resolvers": "^3.9.1",
+    "@polymarket/clob-client": "^5.8.1",
     "@privy-io/react-auth": "^3.19.0",
     "@radix-ui/react-accordion": "1.2.12",
     "@radix-ui/react-alert-dialog": "1.1.15",
@@ -40,6 +44,7 @@
     "@radix-ui/react-toggle-group": "1.1.11",
     "@radix-ui/react-tooltip": "1.2.8",
     "@vercel/analytics": "1.6.1",
+    "ai": "^6.0.146",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

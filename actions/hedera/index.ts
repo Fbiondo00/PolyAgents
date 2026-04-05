@@ -95,11 +95,24 @@ export async function initVault(config: {
       return { success: false, error: 'Missing required fields: vaultId, vaultName' }
     }
 
+    console.log(`[init-vault] starting vault init`, {
+      vaultId: config.vaultId,
+      vaultName: config.vaultName,
+      shares: config.initialShares ?? 1000,
+    })
+
     const context = await initHederaVault({
       vaultId: config.vaultId,
       vaultName: config.vaultName,
       policyHash: config.policyHash,
       initialShares: config.initialShares ?? 1000,
+    })
+
+    console.log(`[init-vault] hedera init complete`, {
+      tokenId: context.tokenId,
+      topicId: context.topicId,
+      agentUaid: context.agentUaid,
+      scheduleId: context.scheduleId,
     })
 
     // Persist hedera context to server-side registry (used by proxy.ts)
@@ -108,9 +121,13 @@ export async function initVault(config: {
       treasuryAccountId: context.treasuryAccountId,
     })
 
+    console.log(`[init-vault] vault registered`, { vaultId: config.vaultId })
+    console.log(`[init-vault] vault init complete`, { vaultId: config.vaultId })
+
     return { success: true, context }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[init-vault] vault init FAILED`, { vaultId: config.vaultId, error: message })
     return { success: false, error: message }
   }
 }

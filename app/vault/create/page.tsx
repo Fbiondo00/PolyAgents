@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { usePrivy, useWallets } from '@privy-io/react-auth'
@@ -11,10 +11,21 @@ import { StrategyForm } from '@/components/strategy-form'
 import { saveVault, generateId, generateAuditId } from '@/lib/store'
 import { Vault } from '@/types'
 import { initVault } from '@/actions/hedera'
+import { initVaultENS, buildEnsContext } from '@/lib/ens/vault-ens-init'
+import { buildEnsName } from '@/lib/ens/subname'
+import { computePolicyHash } from '@/lib/ens/policy-commitment'
+import { fetchUsdcBalance } from '@/actions/arc/fund-vault'
+import {
+  getPrivyArcWalletClient,
+  getArcPublicClient,
+  approveUsdcFromPrivy,
+  ARC_EXPLORER,
+} from '@/lib/arc/privy-wallet'
+import { parseUnits, formatUnits } from 'viem'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft, ChevronRight, User, Settings, Shield,
-  Wallet, Rocket, Check, Loader2
+  Wallet, Rocket, Check, Loader2, Globe
 } from 'lucide-react'
 
 const STEPS = [
@@ -31,6 +42,9 @@ const DEPLOY_STAGES = [
   'Minting vault shares…',
   'Registering HCS audit topic…',
   'Logging deployment to HCS…',
+  'Creating ENS identity…',
+  'Committing policy hash…',
+  'Registering agent fleet…',
   'Vault live!',
 ]
 
@@ -41,7 +55,7 @@ export default function CreateVaultPage() {
   const [step, setStep] = useState(0)
   const [vaultName, setVaultName] = useState('')
   const walletConnected = authenticated && wallets.length > 0
-  const walletAddress = wallets[0]?.address ?? ''
+  const walletAddress = (wallets[0]?.address ?? '') as string
   const [strategy, setStrategy] = useState<Vault['strategy']>({
     bidPrice: 0.01,
     sellPrice: 0.02,
@@ -53,11 +67,45 @@ export default function CreateVaultPage() {
   })
   const [mode, setMode] = useState<'advisory' | 'auto'>('auto')
   const [usdcFunding, setUsdcFunding] = useState('100')
+  const [fundingLoading, setFundingLoading] = useState(false)
+  const [fundingTxHash, setFundingTxHash] = useState('')
+  const [fundingExplorerUrl, setFundingExplorerUrl] = useState('')
+  const [onChainBalance, setOnChainBalance] = useState<string | null>(null)
   const [deploying, setDeploying] = useState(false)
   const [deployStage, setDeployStage] = useState(-1)
   const [deployDone, setDeployDone] = useState(false)
   const [deployError, setDeployError] = useState('')
   const [newVaultId, setNewVaultId] = useState('')
+  const previewId = newVaultId || vaultName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').slice(0, 16)
+
+  // Fetch on-chain USDC balance when entering funding step
+  useEffect(() => {
+    if (step === 3 && walletAddress) {
+      fetchUsdcBalance(walletAddress).then(setOnChainBalance)
+    }
+  }, [step, walletAddress])
+
+  async function handleApprove() {
+    if (!usdcFunding || !wallets[0]) return
+    setFundingLoading(true)
+    setFundingTxHash('')
+    setFundingExplorerUrl('')
+    try {
+      // Client-side approve: user's Privy wallet signs the tx
+      const walletClient = await getPrivyArcWalletClient(wallets[0])
+      const publicClient = getArcPublicClient()
+      const amount = parseUnits(usdcFunding, 6)
+      const spender = (process.env.NEXT_PUBLIC_POLYAGENTS_CONTRACT_ADDRESS || process.env.POLYAGENTS_CONTRACT_ADDRESS) as `0x${string}`
+      const hash = await approveUsdcFromPrivy(walletClient, spender, amount)
+      await publicClient.waitForTransactionReceipt({ hash })
+      setFundingTxHash(hash)
+      setFundingExplorerUrl(`${ARC_EXPLORER}/tx/${hash}`)
+    } catch (err) {
+      console.error('[fund-vault] client-side approve failed:', err)
+    } finally {
+      setFundingLoading(false)
+    }
+  }
 
   const canProceed = useCallback(() => {
     if (step === 0) return vaultName.trim().length >= 2 && authenticated && wallets.length > 0
@@ -73,6 +121,7 @@ export default function CreateVaultPage() {
 
     setDeployStage(0) // "Connecting to Hedera…"
 
+    // ── Phase 1: Hedera deployment ──
     const result = await initVault({
       vaultId: id,
       vaultName,
@@ -85,11 +134,43 @@ export default function CreateVaultPage() {
       return
     }
 
-    // Advance stages to show completion
-    for (let i = 1; i < DEPLOY_STAGES.length; i++) {
+    // Advance Hedera stages (0-4)
+    for (let i = 1; i < 5; i++) {
       setDeployStage(i)
       await new Promise(r => setTimeout(r, 400))
     }
+
+    // ── Phase 2: ENS initialization ──
+    let ensResult: Awaited<ReturnType<typeof initVaultENS>> | null = null
+
+    try {
+      setDeployStage(5) // "Creating ENS identity…"
+      ensResult = await initVaultENS({
+        vaultId: id,
+        vaultName,
+        strategy,
+        mode,
+        funding: { usdc: parseFloat(usdcFunding) || 100, hbar: 1.0 },
+        hederaContext: result.context,
+      })
+      setDeployStage(6) // "Committing policy hash…"
+      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(7) // "Registering agent fleet…"
+      await new Promise(r => setTimeout(r, 400))
+    } catch (ensErr) {
+      console.warn('ENS initialization failed (non-blocking):', ensErr)
+      setDeployStage(5)
+      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(6)
+      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(7)
+      await new Promise(r => setTimeout(r, 400))
+    }
+
+    // Note: USDC approval is now done by the user in Step 3 (Funding) via Privy wallet signing.
+    // No server-side approval needed here.
+
+    setDeployStage(8) // "Vault live!"
 
     const vault: Vault = {
       id,
@@ -112,11 +193,12 @@ export default function CreateVaultPage() {
           id: generateAuditId(),
           type: 'ai-analysis',
           timestamp: Date.now(),
-          reasoning: `Vault deployed on Hedera. Token ${result.context.tokenId}, Topic ${result.context.topicId}. ${result.context.initialSharesMinted} shares minted.`,
+          reasoning: `Vault deployed on Hedera. Token ${result.context.tokenId}, Topic ${result.context.topicId}. ${result.context.initialSharesMinted} shares minted.${ensResult ? ` ENS: ${ensResult.ensName}, policy hash ${ensResult.policyHash.slice(0, 16)}...` : ''}`,
         },
       ],
       sparkline: [0],
       hedera: result.context,
+      ens: ensResult ? buildEnsContext(ensResult) : undefined,
     }
 
     saveVault(vault)
@@ -220,6 +302,12 @@ export default function CreateVaultPage() {
               <h2 className="font-heading text-xl font-bold text-[#E1F5FE] mb-1">Strategy</h2>
               <p className="text-sm text-[#B0BEC5]">Configure your vault&apos;s trading parameters.</p>
             </div>
+            {walletAddress && (
+              <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] px-4 py-3">
+                <p className="text-[10px] text-[#B0BEC5] uppercase tracking-wider">Wallet</p>
+                <p className="text-xs font-mono text-[#E1F5FE] break-all">{walletAddress}</p>
+              </div>
+            )}
             <StrategyForm value={strategy} onChange={setStrategy} />
             {strategy.sellPrice <= strategy.bidPrice && (
               <p className="text-xs text-[#EF5350]">Sell price must be greater than bid price.</p>
@@ -269,34 +357,88 @@ export default function CreateVaultPage() {
           <div className="space-y-6">
             <div>
               <h2 className="font-heading text-xl font-bold text-[#E1F5FE] mb-1">Funding</h2>
-              <p className="text-sm text-[#B0BEC5]">Allocate capital to your vault.</p>
+              <p className="text-sm text-[#B0BEC5]">Allocate capital to your vault on Arc testnet.</p>
             </div>
             <div className="space-y-2">
-              <Label className="text-xs text-[#B0BEC5]">USDC Amount</Label>
+              <Label className="text-xs text-[#B0BEC5]">USDC Amount to Approve</Label>
               <Input
                 type="number"
-                min="10"
+                min="1"
                 max="10000"
                 value={usdcFunding}
                 onChange={e => setUsdcFunding(e.target.value)}
                 className="bg-[#0E1B27] border-[#1A3C50] text-[#E1F5FE] font-mono"
               />
             </div>
+
+            {/* On-chain balance */}
             <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4 space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-[#B0BEC5]">USDC Deposit</span>
-                <span className="font-mono text-[#E1F5FE]">{usdcFunding} USDC</span>
+                <span className="text-[#B0BEC5]">On-chain USDC Balance</span>
+                <span className="font-mono text-[#E1F5FE]">
+                  {onChainBalance !== null
+                    ? `${parseFloat(onChainBalance).toFixed(2)} USDC`
+                    : <Loader2 className="h-3 w-3 animate-spin inline" />
+                  }
+                </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-[#B0BEC5]">HBAR Reserve</span>
-                <span className="font-mono text-[#E1F5FE]">1.0 HBAR</span>
+                <span className="text-[#B0BEC5]">Approve for Contract</span>
+                <span className="font-mono text-[#E1F5FE]">{usdcFunding} USDC</span>
               </div>
               <div className="h-px bg-[#1A3C50]" />
               <div className="flex justify-between text-sm font-semibold">
-                <span className="text-[#B0BEC5]">Total Deployment</span>
-                <span className="font-mono text-[#00A8B5]">${(parseFloat(usdcFunding) || 0) + 1} equiv.</span>
+                <span className="text-[#B0BEC5]">Remaining after approval</span>
+                <span className="font-mono text-[#00A8B5]">
+                  {onChainBalance !== null
+                    ? `${(parseFloat(onChainBalance) - parseFloat(usdcFunding || '0')).toFixed(2)} USDC`
+                    : '—'}
+                </span>
               </div>
             </div>
+
+            {/* Approve button */}
+            {!fundingTxHash && (
+              <Button
+                onClick={handleApprove}
+                disabled={fundingLoading || !usdcFunding}
+                className="w-full bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-semibold gap-2"
+              >
+                {fundingLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wallet className="h-4 w-4" />
+                )}
+                {fundingLoading ? 'Approving on Arc…' : 'Approve USDC on Arc'}
+              </Button>
+            )}
+
+            {/* Approval confirmed */}
+            {fundingTxHash && (
+              <div className="rounded-lg border border-[#26A69A]/40 bg-[#26A69A]/10 p-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-[#26A69A]" />
+                  <p className="text-sm font-semibold text-[#E1F5FE]">USDC Approved</p>
+                </div>
+                <p className="text-xs text-[#B0BEC5] break-all">
+                  TX: <span className="font-mono text-[#4DD0E1]">{fundingTxHash.slice(0, 10)}…{fundingTxHash.slice(-8)}</span>
+                </p>
+                {fundingExplorerUrl && (
+                  <a
+                    href={fundingExplorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
+                  >
+                    View on Arc Explorer
+                  </a>
+                )}
+              </div>
+            )}
+
+            <p className="text-xs text-[#B0BEC5]">
+              Approval is non-blocking — you can deploy without it, but the engine needs approval to place bets on-chain.
+            </p>
           </div>
         )}
 
@@ -317,10 +459,17 @@ export default function CreateVaultPage() {
                   ['Bid / Sell', `$${strategy.bidPrice} / $${strategy.sellPrice}`],
                   ['Max Capital', `$${strategy.maxCapital}`],
                   ['USDC', `${usdcFunding} USDC`],
+                  ['ENS Name', buildEnsName(previewId)],
+                  ['Policy Hash', computePolicyHash(strategy, vaultName, mode).slice(0, 16) + '…'],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between text-sm">
                     <span className="text-[#B0BEC5]">{k}</span>
-                    <span className="font-mono text-[#E1F5FE]">{v}</span>
+                    <span className={cn(
+                      'font-mono',
+                      k === 'ENS Name' ? 'text-[#00A8B5]' :
+                      k === 'Policy Hash' ? 'text-[#4DD0E1]' :
+                      'text-[#E1F5FE]'
+                    )}>{v}</span>
                   </div>
                 ))}
               </div>
@@ -364,6 +513,17 @@ export default function CreateVaultPage() {
               <div className="rounded-lg border border-[#26A69A]/40 bg-[#26A69A]/10 p-8 space-y-3">
                 <Check className="h-10 w-10 text-[#26A69A] mx-auto" />
                 <p className="font-heading font-bold text-[#E1F5FE]">Vault Deployed!</p>
+                {buildEnsName(newVaultId) && (
+                  <a
+                    href={`https://app.ens.domains/name/${buildEnsName(newVaultId)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mx-auto text-sm text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
+                  >
+                    <Globe className="h-3.5 w-3.5" />
+                    <span className="font-mono">{buildEnsName(newVaultId)}</span>
+                  </a>
+                )}
                 <p className="text-sm text-[#B0BEC5]">Redirecting to dashboard…</p>
               </div>
             )}

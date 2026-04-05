@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { RefreshCw, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { getOrCreateEngine } from '@/lib/engine/strategy/engine'
-import { getMarketState, getEngineRun, addEngineAuditEvent } from '@/lib/engine/repositories'
+import { runSingleCycle } from '@/actions/engine'
 
 interface CycleButtonProps {
   vaultId: string
@@ -38,25 +37,19 @@ export function CycleButton({ vaultId, onComplete, className }: CycleButtonProps
       await new Promise(r => setTimeout(r, STAGES[i].duration))
     }
 
-    // Execute real engine step
-    const engine = getOrCreateEngine(vaultId)
-    await engine.step(vaultId)
+    // Execute real engine step via server action
+    const result = await runSingleCycle(vaultId)
 
-    const state = getMarketState(vaultId)
-    const hasFills = state
-      ? (state.sides.YES.filledBuyQty + state.sides.YES.filledSellQty +
-         state.sides.NO.filledBuyQty + state.sides.NO.filledSellQty) > 0
-      : false
-
-    if (hasFills) {
-      const totalPnl = state
-        ? state.sides.YES.realizedPnl + state.sides.NO.realizedPnl
-        : 0
-      toast.success(`Fill processed! PnL: ${totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(3)} USDC`, {
-        description: `YES: ${state?.sides.YES.unsoldInventory.toFixed(1) ?? '0'} inv | NO: ${state?.sides.NO.unsoldInventory.toFixed(1) ?? '0'} inv`,
-      })
+    if (result.success) {
+      if (result.fills > 0) {
+        toast.success(`Fill processed! PnL: ${result.pnl >= 0 ? '+' : ''}${result.pnl.toFixed(3)} USDC`, {
+          description: `${result.fills} fill(s) processed`,
+        })
+      } else {
+        toast.info('Cycle complete — no fills this round.')
+      }
     } else {
-      toast.info('Cycle complete — no fills this round.')
+      toast.error(result.error ?? 'Cycle failed')
     }
 
     setDone(true)

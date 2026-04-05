@@ -3,6 +3,10 @@
     {
       "path": "/api/engine/cron/reconcile",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/engine/cron/repatriate",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

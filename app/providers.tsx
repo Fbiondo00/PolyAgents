@@ -1,12 +1,15 @@
 'use client'
 
 import { PrivyProvider } from '@privy-io/react-auth'
+import { arcTestnet } from '@/lib/arc/market-client'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
       config={{
+        defaultChain: arcTestnet,
+        supportedChains: [arcTestnet],
         loginMethods: ['wallet', 'email', 'google', 'twitter'],
         appearance: {
           theme: 'dark',

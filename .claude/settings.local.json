@@ -6,6 +6,8 @@
       "Bash(npx next dev --port 3000)",
       "Bash(curl:*)",
       "Bash(npm run build)",
+      "mcp__web-reader__webReader",
+      "Bash(npx tsc:*)",
       "mcp__chrome2__get_console_message",
       "mcp__chrome2__evaluate_script",
       "mcp__chrome2__wait_for",
@@ -24,7 +26,11 @@
       "Bash(source ../.env.local)",
       "mcp__chrome2__take_snapshot",
       "mcp__chrome2__click",
-      "mcp__chrome2__fill"
+      "mcp__chrome2__fill",
+      "mcp__web-search-prime__web_search_prime",
+      "WebSearch",
+      "Bash(node -e:*)",
+      "mcp__zai-mcp-server__extract_text_from_screenshot"
     ]
   }
 }

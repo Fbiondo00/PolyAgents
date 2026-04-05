@@ -1,0 +1,95 @@
+{
+  "runs": {
+    "vault-1775348188749-wm2ji": {
+      "id": "run-1775348317243-hkxkxd",
+      "vaultId": "vault-1775348188749-wm2ji",
+      "status": "stopped",
+      "currentState": "IDLE",
+      "activeMarketId": null,
+      "startedAt": 1775348317243,
+      "stoppedAt": 1775348460132,
+      "lastHeartbeatAt": 1775348446278,
+      "lastError": null
+    }
+  },
+  "marketStates": {
+    "vault-1775348188749-wm2ji": {
+      "market": {
+        "conditionId": "sim-btc5m-1775348400",
+        "slug": "btc-updown-5m-1775348400",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775348400)",
+        "yesTokenId": "sim-yes-1775348400",
+        "noTokenId": "sim-no-1775348400",
+        "startTs": 1775348400,
+        "endTs": 1775348700,
+        "tickSize": 0.01,
+        "minOrderSize": 1
+      },
+      "sides": {
+        "YES": {
+          "submittedBuyQty": 0,
+          "filledBuyQty": 0,
+          "openBuyQty": 0,
+          "submittedSellQty": 0,
+          "filledSellQty": 0,
+          "openSellQty": 0,
+          "unsoldInventory": 0,
+          "realizedPnl": 0,
+          "completedCycles": 0
+        },
+        "NO": {
+          "submittedBuyQty": 0,
+          "filledBuyQty": 0,
+          "openBuyQty": 0,
+          "submittedSellQty": 0,
+          "filledSellQty": 0,
+          "openSellQty": 0,
+          "unsoldInventory": 0,
+          "realizedPnl": 0,
+          "completedCycles": 0
+        }
+      },
+      "totalNewEntries": 0,
+      "isExpired": false,
+      "buyCancelDone": false,
+      "sellCancelDone": false,
+      "pendingOldMarketId": "sim-btc5m-1775348100"
+    }
+  },
+  "orders": {},
+  "audits": {
+    "vault-1775348188749-wm2ji": [
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "none",
+        "newMarketId": "sim-btc5m-1775348100",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775348100)",
+        "timestamp": 1775348235731
+      },
+      {
+        "type": "ENGINE_STOPPED",
+        "runId": "run-1775348245315-h0of71",
+        "timestamp": 1775348268388
+      },
+      {
+        "type": "ENGINE_STARTED",
+        "runId": "run-1775348317243-hkxkxd",
+        "timestamp": 1775348317244
+      },
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "sim-btc5m-1775348100",
+        "newMarketId": "sim-btc5m-1775348400",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775348400)",
+        "timestamp": 1775348405298
+      },
+      {
+        "type": "ENGINE_STOPPED",
+        "runId": "run-1775348317243-hkxkxd",
+        "timestamp": 1775348460133
+      }
+    ]
+  },
+  "configs": {},
+  "cycleCounts": {}
+}

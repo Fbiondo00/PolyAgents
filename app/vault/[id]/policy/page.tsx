@@ -6,20 +6,13 @@ import { getVaultById, saveVault } from '@/lib/store'
 import { Vault } from '@/types'
 import { StrategyForm } from '@/components/strategy-form'
 import { PolicyHashCard } from '@/components/policy-hash-card'
+import { ENSVerificationCard } from '@/components/ens-verification-card'
+import { computePolicyHash } from '@/lib/ens/policy-commitment'
+import { commitPolicy } from '@/actions/ens'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { Loader2, Save, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-function computeHash(strategy: Vault['strategy'], name: string): string {
-  const str = JSON.stringify({ name, strategy })
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0
-  }
-  const h = Math.abs(hash).toString(16).padStart(8, '0')
-  return `0x${h}${h.split('').reverse().join('')}${h}abcdef0123456789`.slice(0, 64)
-}
 
 export default function PolicyPage() {
   const params = useParams<{ id: string }>()
@@ -34,28 +27,42 @@ export default function PolicyPage() {
     if (v) {
       setVault(v)
       setStrategy(v.strategy)
-      setHash(computeHash(v.strategy, v.name))
+      setHash(computePolicyHash(v.strategy, v.name, v.mode))
     }
   }, [params.id])
 
   function onStrategyChange(s: Vault['strategy']) {
     setStrategy(s)
-    if (vault) setHash(computeHash(s, vault.name))
+    if (vault) setHash(computePolicyHash(s, vault.name, vault.mode))
     setSaved(false)
   }
 
   async function handleSave() {
     if (!vault || !strategy) return
     setSaving(true)
-    await new Promise(r => setTimeout(r, 3000))
+
+    try {
+      // Commit policy hash to ENS (real on-chain transaction)
+      const result = await commitPolicy(vault.id, strategy, vault.name, vault.mode)
+
+      if (!result.success) {
+        toast.error('ENS commit failed', { description: result.error })
+      } else {
+        toast.success('Policy committed to ENS', {
+          description: `Tx: ${result.txHash?.slice(0, 10)}…`,
+        })
+      }
+    } catch {
+      // Non-blocking: ENS failure shouldn't prevent local save
+      toast.warning('ENS commit skipped — saved locally')
+    }
+
     const updated = { ...vault, strategy }
     saveVault(updated)
     setVault(updated)
     setSaved(true)
     setSaving(false)
-    toast.success('Policy saved', {
-      description: `Hash: ${hash.slice(0, 16)}…`,
-    })
+
     setTimeout(() => setSaved(false), 3000)
   }
 
@@ -72,6 +79,8 @@ export default function PolicyPage() {
 
       <PolicyHashCard hash={hash} />
 
+      <ENSVerificationCard vault={vault} />
+
       <Button
         onClick={handleSave}
         disabled={saving}
@@ -85,7 +94,7 @@ export default function PolicyPage() {
         {saving ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            Computing hash (3s)…
+            Committing to ENS…
           </>
         ) : saved ? (
           <>
