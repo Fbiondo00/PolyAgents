@@ -5,7 +5,31 @@
       "Bash(npm install:*)",
       "Bash(npx next dev --port 3000)",
       "Bash(curl:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "mcp__web-reader__webReader",
+      "Bash(npx tsc:*)",
+      "Bash(node:*)",
+      "Bash(npm ls:*)",
+      "Bash(where:*)",
+      "Bash(npx solcjs:*)",
+      "Bash(npx solc:*)",
+      "mcp__web-search-prime__web_search_prime",
+      "WebSearch",
+      "mcp__zread__get_repo_structure",
+      "Bash(python:*)",
+      "Bash(cmd.exe /c \"node -e \"\"console.log\\(42\\)\"\"\")",
+      "Bash(solc:*)",
+      "Bash(npx --yes solc-js:*)",
+      "mcp__zread__search_doc",
+      "Bash(gh repo view:*)",
+      "Bash(gh api:*)",
+      "Bash(chcp 65001)",
+      "Bash(PYTHONIOENCODING=utf-8 gh api:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python3:*)",
+      "Bash(gh issue list:*)",
+      "Bash(python3:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: real ENS integration + live HCS feed from Mirror Node\n\n- Deploy custom SimpleTextResolver v3 with TextChanged events on Sepolia\n- Update subname.ts to use new ENSIP-1 string-key ABI\n- Write real policy commitment hash on-chain \\(keccak256 of strategy params\\)\n- ENSVerificationCard now works for all vaults \\(computes ENS name from vault ID\\)\n- HCSFeed replaced mock data with real Mirror Node polling \\(8s interval\\)\n- HCSFeed shows fallback for vaults without Hedera context\n- Add link to Hashscan topic and Sepolia ENS app\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }
