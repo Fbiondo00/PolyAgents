@@ -1,14 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { readAgentStats } from '@/lib/ens/agent-stats'
+import { verifyPolicyIntegrity } from '@/lib/ens/policy-commitment'
+import { resolveAgentProfile } from '@/lib/ens/agent-identity'
 import { buildEnsName } from '@/lib/ens/subname'
-import { Copy, CheckCheck, ExternalLink, Shield, ShieldAlert, RefreshCw, Loader2, Globe, RotateCcw } from 'lucide-react'
+import { Copy, CheckCheck, ExternalLink, Shield, ShieldAlert, RefreshCw, Loader2, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
-import { fetchAgentStats, verifyPolicy, fetchAgentProfile, reinitializeENS } from '@/actions/ens'
-import { saveVault } from '@/lib/store'
 import type { Vault } from '@/types/vault'
 
 interface ENSVerificationCardProps {
@@ -25,76 +25,54 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
     onChainHash: string | null
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
-  const [reinitLoading, setReinitLoading] = useState(false)
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const loadingRef = useRef(false)
 
   // Use vault.ens.name if available, otherwise compute from vault ID
   const ensName = vault.ens?.name || buildEnsName(vault.id)
 
-  async function loadENS() {
-    if (!vault.id) return
+  const loadENS = useCallback(() => {
+    if (!ensName || loadingRef.current) return
 
+    loadingRef.current = true
     setLoading(true)
-    const debugLines: string[] = []
-    debugLines.push(`ensName: ${ensName}`)
-    debugLines.push(`vault.id: ${vault.id}`)
-    debugLines.push(`vault.name: ${vault.name}`)
-    debugLines.push(`vault.mode: ${vault.mode}`)
-    debugLines.push(`vault.strategy keys: ${Object.keys(vault.strategy).join(', ')}`)
-    if (vault.ens?.txHashes?.length) {
-      debugLines.push(`ENS tx hashes: ${vault.ens.txHashes.length} txs`)
-      debugLines.push(`  first tx: ${vault.ens.txHashes[0]}`)
-    } else {
-      debugLines.push(`ENS tx hashes: NONE (vault may not have been initialized)`)
-    }
-    debugLines.push(`ENS initializedAt: ${vault.ens?.initializedAt ?? 'never'}`)
+    setError(null)
 
-    try {
-      const [statsResult, profileResult, verifyResult] = await Promise.all([
-        fetchAgentStats(vault.id),
-        fetchAgentProfile(vault.id),
-        verifyPolicy(vault.id, vault.strategy, vault.name, vault.mode),
-      ])
+    Promise.all([
+      readAgentStats(ensName),
+      resolveAgentProfile(ensName),
+      verifyPolicyIntegrity(
+        ensName,
+        vault.strategy,
+        vault.name,
+        vault.mode
+      ),
+    ])
+      .then(([stats, prof, verify]) => {
+        setEnsData(stats)
+        setProfile(prof)
+        setVerification(verify)
+        setError(null)
+      })
+      .catch((err) => {
+        console.error('ENS read failed:', err)
+        setEnsData({})
+        setProfile({})
+        setVerification(null)
+        setError(err instanceof Error ? err.message : 'Failed to resolve ENS records')
+      })
+      .finally(() => {
+        setLoading(false)
+        loadingRef.current = false
+      })
+  }, [ensName, vault.strategy, vault.name, vault.mode])
 
-      if (statsResult.success && statsResult.stats) {
-        setEnsData(statsResult.stats)
-        debugLines.push(`stats keys: ${Object.keys(statsResult.stats).join(', ') || 'none'}`)
-      } else {
-        debugLines.push(`stats error: ${statsResult.error ?? 'unknown'}`)
-      }
-
-      if (profileResult.success && profileResult.profile) {
-        setProfile(profileResult.profile)
-        debugLines.push(`profile keys: ${Object.keys(profileResult.profile).join(', ') || 'none'}`)
-      } else {
-        debugLines.push(`profile error: ${profileResult.error ?? 'unknown'}`)
-      }
-
-      if (verifyResult.success) {
-        setVerification({
-          match: verifyResult.match ?? false,
-          localHash: verifyResult.localHash ?? '',
-          onChainHash: verifyResult.onChainHash ?? null,
-        })
-        debugLines.push(`verification.match: ${verifyResult.match}`)
-        debugLines.push(`verification.localHash: ${verifyResult.localHash ?? 'none'}`)
-        debugLines.push(`verification.onChainHash: ${verifyResult.onChainHash ?? 'null'}`)
-      } else {
-        debugLines.push(`verify error: ${verifyResult.error ?? 'unknown'}`)
-      }
-    } catch (err) {
-      console.error('ENS read failed:', err)
-      debugLines.push(`ERROR: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setLoading(false)
-      setDebugInfo(debugLines)
-    }
-  }
-
+  // Only trigger on mount + ensName change (not on object reference changes)
   useEffect(() => {
     loadENS()
-  }, [ensName, vault.strategy, vault.name, vault.mode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensName])
 
   if (!ensName) return null
 
@@ -102,31 +80,6 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
     navigator.clipboard.writeText(ensName).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
-
-  async function handleReinitialize() {
-    setReinitLoading(true)
-    try {
-      const result = await reinitializeENS(vault.id, {
-        name: vault.name,
-        strategy: vault.strategy,
-        mode: vault.mode,
-        funding: vault.funding,
-        hedera: vault.hedera,
-      })
-      if (result.success && result.ensContext) {
-        // Persist ENS context on vault in localStorage (client-side)
-        saveVault({ ...vault, ens: result.ensContext })
-        toast.success(`ENS re-initialized: ${result.ensName}`)
-        loadENS()
-      } else {
-        toast.error(`ENS re-init failed: ${result.error}`)
-      }
-    } catch {
-      toast.error('ENS re-init failed')
-    } finally {
-      setReinitLoading(false)
-    }
   }
 
   return (
@@ -140,27 +93,15 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
           <Globe className="h-4 w-4 text-[#00A8B5]" />
           <p className="text-xs font-semibold text-[#E1F5FE]">ENS Identity</p>
         </div>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-[10px] gap-1 text-[#B0BEC5] hover:text-[#00A8B5]"
-            onClick={handleReinitialize}
-            disabled={reinitLoading}
-          >
-            {reinitLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-            Re-init
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-[#B0BEC5] hover:text-[#00A8B5]"
-            onClick={loadENS}
-            disabled={loading}
-          >
-            <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-[#B0BEC5] hover:text-[#00A8B5]"
+          onClick={loadENS}
+          disabled={loading}
+        >
+          <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
+        </Button>
       </div>
 
       <div className="p-4 space-y-4">
@@ -177,7 +118,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
               {copied ? <CheckCheck className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </Button>
             <a
-              href={`https://sepolia.app.ens.domains/name/${ensName}`}
+              href={`https://sepolia.app.ens.domains/${ensName}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#B0BEC5] hover:text-[#00A8B5] transition-colors"
@@ -195,8 +136,50 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
           </div>
         )}
 
+        {/* Error state */}
+        {!loading && error && (
+          <div className="rounded-lg border border-[#EF5350]/30 bg-[#EF5350]/5 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-[#EF5350]" />
+              <p className="text-xs text-[#EF5350] font-semibold">ENS Resolution Failed</p>
+            </div>
+            <p className="text-xs text-[#B0BEC5]">{error}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-[#00A8B5] hover:text-[#4DD0E1] gap-1 h-7 px-2"
+              onClick={loadENS}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {/* Empty state — subname not yet initialized on-chain */}
+        {!loading && !error && Object.keys(ensData).length === 0 && !verification && (
+          <div className="rounded-lg border border-[#1A3C50] bg-[#081216] p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-[#B0BEC5]" />
+              <p className="text-xs text-[#B0BEC5] font-semibold">No ENS Records Found</p>
+            </div>
+            <p className="text-xs text-[#B0BEC5]">
+              This vault's ENS subname has not been initialized yet. Records will appear after the first deployment.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-[#00A8B5] hover:text-[#4DD0E1] gap-1 h-7 px-2"
+              onClick={loadENS}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* Policy Verification */}
-        {!loading && verification && (
+        {!loading && !error && verification && (
           <div className="rounded-lg border border-[#1A3C50] bg-[#081216] p-3 space-y-2">
             <div className="flex items-center gap-2">
               {verification.match ? (
@@ -233,7 +216,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
         )}
 
         {/* Live Agent Stats */}
-        {!loading && Object.keys(ensData).length > 0 && (
+        {!loading && !error && Object.keys(ensData).length > 0 && (
           <div className="space-y-2">
             <p className="text-xs text-[#B0BEC5] font-semibold">Live Stats (on-chain)</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -295,7 +278,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
         )}
 
         {/* Agent Profile (ENSIP-25) */}
-        {!loading && profile['ai.agent.hcs14-uaid'] && (
+        {!loading && !error && profile['ai.agent.hcs14-uaid'] && (
           <div className="rounded-lg border border-[#1A3C50] bg-[#081216] p-3 space-y-2">
             <div className="flex items-center gap-2">
               <Shield className="h-3 w-3 text-[#00A8B5]" />
@@ -329,20 +312,6 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
               )}
             </div>
           </div>
-        )}
-
-        {/* Debug diagnostics (visible when mismatch or no data) */}
-        {!loading && debugInfo.length > 0 && (!verification?.match || Object.keys(ensData).length === 0) && (
-          <details className="rounded-lg border border-[#FF8F00]/30 bg-[#081216]">
-            <summary className="px-3 py-2 text-[10px] font-semibold text-[#FF8F00] cursor-pointer select-none">
-              [Debug] ENS Diagnostics
-            </summary>
-            <div className="px-3 pb-3 space-y-0.5">
-              {debugInfo.map((line, i) => (
-                <p key={i} className="text-[10px] font-mono text-[#B0BEC5] leading-relaxed break-all">{line}</p>
-              ))}
-            </div>
-          </details>
         )}
       </div>
     </div>

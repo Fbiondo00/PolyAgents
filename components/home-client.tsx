@@ -9,9 +9,11 @@ import { initDemoVault, getVaults } from '@/lib/store'
 import { Vault } from '@/types'
 import { PnLSparkline } from '@/components/pnl-sparkline'
 import { MobileNav } from '@/components/mobile-nav'
+import { VaultCard } from '@/components/vault-card'
 import {
   Bot, Zap, Shield, TrendingUp, ArrowRight, Plus,
-  BarChart3, Activity, Coins, ChevronRight
+  BarChart3, Activity, Coins, ChevronRight,
+  Globe, Lock, FileText, Cpu, RefreshCw, Eye, LayoutGrid,
 } from 'lucide-react'
 import { PrivyLoginButton } from '@/components/privy-login-button'
 
@@ -26,19 +28,57 @@ const TICKER_ITEMS = [
   { label: 'Open Positions', value: '8,340', delta: '' },
 ]
 
-const PRIZE_CARDS = [
-  { title: 'Track 1 — AI Agent', prize: '$15,000', desc: 'Most profitable autonomous vault over 24h backtest' },
-  { title: 'Track 2 — UX', prize: '$8,000', desc: 'Best onboarding and mobile experience' },
-  { title: 'Track 3 — Infrastructure', prize: '$7,000', desc: 'Most scalable HCS integration' },
+const DIAGRAM_NODES = [
+  { label: 'Polymarket CLOB', x: '10%', y: '20%' },
+  { label: 'AI Agent', x: '42%', y: '10%' },
+  { label: 'Arc (USDC)', x: '75%', y: '20%' },
+  { label: 'Vault Strategy', x: '42%', y: '50%' },
+  { label: 'Hedera HCS', x: '10%', y: '75%' },
+  { label: 'ENS Identity', x: '75%', y: '75%' },
 ]
 
-const DIAGRAM_NODES = [
-  { label: 'CLOB Market', x: '10%', y: '20%' },
-  { label: 'AI Agent', x: '42%', y: '10%' },
-  { label: 'HBAR Wallet', x: '75%', y: '20%' },
-  { label: 'Vault Strategy', x: '42%', y: '50%' },
-  { label: 'HCS Feed', x: '10%', y: '75%' },
-  { label: 'Token Gate', x: '75%', y: '75%' },
+const STRATEGY_STEPS = [
+  { step: '01', title: 'Discover', desc: 'Scan Polymarket for active BTC 5-minute binary markets with tight spreads and high liquidity.' },
+  { step: '02', title: 'Quote', desc: 'Place $0.01 limit bids on both YES and NO sides — passive market-making at extreme probability edges.' },
+  { step: '03', title: 'Fill & Flip', desc: 'When filled, instantly sell at $0.02. 100% spread capture per share — no directional risk.' },
+  { step: '04', title: 'Roll Over', desc: 'Before expiry, cancel open orders and roll into the next 5-minute window. Non-stop cycle.' },
+  { step: '05', title: 'Reconcile', desc: 'Cross-check on-chain inventory with local ledger. Patch any drift from network latency.' },
+]
+
+const SPONSOR_INTEGRATIONS = [
+  {
+    name: 'Arc',
+    role: 'Settlement Layer',
+    color: '#4DD0E1',
+    points: [
+      'USDC-native EVM L1 — gas in dollars, not ETH',
+      'PolyAgentsMarket contract for binary prediction markets',
+      'Deterministic finality in ~2s',
+      'On-chain vault balance & position tracking',
+    ],
+  },
+  {
+    name: 'Hedera',
+    role: 'Access Control & Audit',
+    color: '#26A69A',
+    points: [
+      'HTS token gating — vault creation requires operator token',
+      'HCS immutable audit log — every bid, fill, rollover recorded',
+      'HBAR micropayments before each AI inference call',
+      'HCS-14 on-chain agent identity (UAID)',
+    ],
+  },
+  {
+    name: 'ENS',
+    role: 'Agent Identity Layer',
+    color: '#FF8F00',
+    points: [
+      'Vault subname (vault-{id}.polyagents.eth) at deploy',
+      'keccak256 policy hash as cryptographic commitment',
+      'Live agent stats as text records (PnL, flips, engine state)',
+      'ENSIP-25 agent verification — cross-chain identity',
+    ],
+  },
 ]
 
 export function HomeClient() {
@@ -48,11 +88,16 @@ export function HomeClient() {
   const { wallets } = useWallets()
   const walletAddress = authenticated && wallets.length > 0 ? wallets[0].address.toLowerCase() : null
 
+  // Demo vault: solo al mount
   useEffect(() => {
     initDemoVault()
+  }, [])
+
+  // Vault list: reattivo al cambio wallet
+  useEffect(() => {
     setAllVaults(getVaults())
     setMounted(true)
-  }, [])
+  }, [authenticated, wallets])
 
   // Filter: show demo vault always, user vaults only if wallet matches
   const vaults = allVaults.filter(v => {
@@ -78,6 +123,17 @@ export function HomeClient() {
             </Badge>
           </div>
           <div className="flex items-center gap-2">
+            {authenticated && wallets.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-[#1A3C50] text-[#B0BEC5] hover:text-[#E1F5FE] hover:bg-[#1A3C50] gap-1.5"
+                onClick={() => document.getElementById('my-vaults')?.scrollIntoView({ behavior: 'smooth' })}
+              >
+                <LayoutGrid className="h-3.5 w-3.5" />
+                My Vaults
+              </Button>
+            )}
             <PrivyLoginButton />
             <Link href="/vault/create">
               <Button size="sm" className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-semibold gap-1.5">
@@ -111,7 +167,7 @@ export function HomeClient() {
         <section className="flex flex-col items-center py-16 text-center md:py-24">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#1A3C50] bg-[#0E1B27] px-4 py-1.5 text-xs text-[#00A8B5]">
             <Activity className="h-3 w-3" />
-            Live on Hedera Testnet
+            ETHGlobal Cannes 2026 — Live Prototype
           </div>
           <h1 className="font-heading text-4xl font-extrabold leading-tight text-balance text-[#E1F5FE] md:text-6xl lg:text-7xl">
             Autonomous{' '}
@@ -120,7 +176,8 @@ export function HomeClient() {
             for Prediction Markets
           </h1>
           <p className="mt-6 max-w-2xl text-base leading-relaxed text-[#B0BEC5] md:text-lg">
-            Deploy AI-powered vaults that scalp micro spreads on Polymarket CLOBs using Hedera Token Service for access control and HCS for deterministic audit trails.
+            Deploy AI-powered vaults that scalp micro spreads on Polymarket&apos;s 5-minute BTC binary markets.
+            Passive market-making: $0.01 bids on both sides, instant $0.02 flips for 100% spread capture.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link href="/vault/create">
@@ -141,113 +198,30 @@ export function HomeClient() {
           </div>
         </section>
 
-        {/* Stats */}
-        <section className="grid grid-cols-2 gap-3 mb-12 md:grid-cols-4">
-          {[
-            { label: 'Total Vaults', value: '1,482', icon: Bot },
-            { label: 'Cycles Run', value: '284K', icon: Activity },
-            { label: 'Protocol PnL', value: '+$18.7K', icon: TrendingUp },
-            { label: 'Token Gates', value: '1,482', icon: Shield },
-          ].map(({ label, value, icon: Icon }) => (
-            <div key={label} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">
-              <Icon className="h-4 w-4 text-[#00A8B5] mb-2" />
-              <p className="text-xl font-mono font-bold text-[#E1F5FE]">{value}</p>
-              <p className="text-xs text-[#B0BEC5] mt-0.5">{label}</p>
-            </div>
-          ))}
-        </section>
-
-        {/* My Vaults */}
-        {mounted && vaults.length > 0 && (
-          <section className="mb-12">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-heading text-lg font-bold text-[#E1F5FE]">My Vaults</h2>
-              <Link href="/vault/create">
-                <Button size="sm" variant="outline" className="border-[#1A3C50] text-[#B0BEC5] hover:text-[#E1F5FE] hover:bg-[#1A3C50] gap-1.5 text-xs">
-                  <Plus className="h-3 w-3" />
-                  Add Vault
-                </Button>
-              </Link>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-              {vaults.map(vault => (
-                <Link key={vault.id} href={`/vault/${vault.id}`}>
-                  <div className="group rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4 hover:border-[#00A8B5]/50 hover:bg-[#0E1B27] transition-all cursor-pointer">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <p className="font-semibold text-[#E1F5FE] group-hover:text-[#00A8B5] transition-colors">
-                          {vault.name}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className={`h-1.5 w-1.5 rounded-full ${vault.mode === 'auto' ? 'bg-[#26A69A]' : 'bg-[#FF8F00]'}`} />
-                          <span className="text-xs text-[#B0BEC5] capitalize">{vault.mode}</span>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-[#B0BEC5] group-hover:text-[#00A8B5] transition-colors" />
-                    </div>
-                    <div className="h-12 mb-3">
-                      <PnLSparkline data={vault.sparkline ?? [vault.stats.pnl]} />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div>
-                        <p className="text-[#B0BEC5]">PnL</p>
-                        <p className={`font-mono font-semibold ${vault.stats.pnl >= 0 ? 'text-[#26A69A]' : 'text-[#EF5350]'}`}>
-                          {vault.stats.pnl >= 0 ? '+' : ''}{vault.stats.pnl.toFixed(2)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[#B0BEC5]">Flips</p>
-                        <p className="font-mono font-semibold text-[#E1F5FE]">{vault.stats.flips}</p>
-                      </div>
-                      <div>
-                        <p className="text-[#B0BEC5]">Cycles</p>
-                        <p className="font-mono font-semibold text-[#E1F5FE]">{vault.stats.cycles}</p>
-                      </div>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Features */}
+        {/* Strategy — How It Works */}
         <section className="mb-16">
-          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-8">How It Works</h2>
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              {
-                icon: Bot,
-                title: 'AI-Driven Strategy',
-                desc: 'Each vault runs an autonomous agent that analyses order flow, RSI, and volume to pick optimal entry tranches.',
-              },
-              {
-                icon: Shield,
-                title: 'Token-Gated Access',
-                desc: 'HTS token ownership gates vault creation and cycle execution, ensuring skin-in-the-game from every operator.',
-              },
-              {
-                icon: Coins,
-                title: 'Deterministic Audit',
-                desc: 'Every bid, fill, and rollover is logged immutably to HCS. Exportable audit trail ready for compliance.',
-              },
-            ].map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-6">
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[#00A8B5]/15 text-[#00A8B5]">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <h3 className="font-heading font-semibold text-[#E1F5FE] mb-2">{title}</h3>
-                <p className="text-sm leading-relaxed text-[#B0BEC5]">{desc}</p>
+          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-2">The Strategy</h2>
+          <p className="text-sm text-[#B0BEC5] text-center mb-8 max-w-xl mx-auto">
+            A state-machine driven cycle that runs every 5 minutes — no directional bets, pure passive market-making.
+          </p>
+          <div className="grid gap-3 md:grid-cols-5">
+            {STRATEGY_STEPS.map(({ step, title, desc }) => (
+              <div key={step} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4 relative">
+                <span className="text-[10px] font-mono text-[#00A8B5]/60">{step}</span>
+                <h3 className="font-heading font-semibold text-[#E1F5FE] text-sm mt-1 mb-1.5">{title}</h3>
+                <p className="text-xs text-[#B0BEC5] leading-relaxed">{desc}</p>
               </div>
             ))}
           </div>
         </section>
 
-        {/* Architecture Diagram */}
+        {/* Multi-Chain Architecture */}
         <section className="mb-16">
-          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-8">Architecture</h2>
-          <div className="relative rounded-xl border border-[#1A3C50] bg-[#0E1B27] h-56 overflow-hidden">
-            {/* SVG connections */}
+          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-2">Multi-Chain Architecture</h2>
+          <p className="text-sm text-[#B0BEC5] text-center mb-8 max-w-xl mx-auto">
+            Three sponsor chains, each with a distinct role. No single point of failure.
+          </p>
+          <div className="relative rounded-xl border border-[#1A3C50] bg-[#0E1B27] h-56 overflow-hidden mb-8">
             <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
@@ -284,28 +258,101 @@ export function HomeClient() {
               </div>
             ))}
           </div>
-        </section>
-
-        {/* Prize Cards */}
-        <section className="mb-16">
-          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-8">Hackathon Prizes</h2>
           <div className="grid gap-4 md:grid-cols-3">
-            {PRIZE_CARDS.map(({ title, prize, desc }) => (
-              <div key={title} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-6 relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-1 bg-[#00A8B5]" />
-                <p className="text-xs text-[#B0BEC5] mb-1">{title}</p>
-                <p className="font-heading text-3xl font-extrabold text-[#00A8B5] text-glow mb-2">{prize}</p>
-                <p className="text-sm text-[#B0BEC5] leading-relaxed">{desc}</p>
+            {SPONSOR_INTEGRATIONS.map(({ name, role, color, points }) => (
+              <div key={name} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-5 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: color }} />
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="font-heading font-bold text-[#E1F5FE]">{name}</h3>
+                  <Badge className="text-[10px] border-[#1A3C50] bg-[#081216] text-[#B0BEC5]">
+                    {role}
+                  </Badge>
+                </div>
+                <ul className="space-y-2">
+                  {points.map((point) => (
+                    <li key={point} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
+                      <span className="mt-1.5 shrink-0 h-1 w-1 rounded-full" style={{ background: color }} />
+                      {point}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
         </section>
 
+        {/* Core Features */}
+        <section className="mb-16">
+          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-8">Core Features</h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                icon: Cpu,
+                title: 'Autonomous Agent Loop',
+                desc: 'State machine cycles through DISCOVER → QUOTE → HOLDING_INVENTORY → EXPIRY_GUARD → ROLL_OVER → RECONCILE. Fully automatic or advisory mode.',
+              },
+              {
+                icon: Eye,
+                title: 'AI Market Analysis',
+                desc: 'Vercel AI Gateway with Gemini 2.0 Flash Lite analyses order flow, RSI, and volume to determine entry confidence and sizing.',
+              },
+              {
+                icon: Shield,
+                title: 'HTS Token Gate',
+                desc: 'Hedera Token Service mints non-transferable operator tokens. Vault creation and cycle execution require token ownership — skin in the game.',
+              },
+              {
+                icon: FileText,
+                title: 'HCS Immutable Audit',
+                desc: 'Every bid, fill, sell, and rollover is logged to Hedera Consensus Service. Queryable via Mirror Node REST API. Export as CSV.',
+              },
+              {
+                icon: Globe,
+                title: 'ENS Agent Identity',
+                desc: 'Each vault gets an ENS subname. Policy hash committed via keccak256 text record. Live stats (PnL, flips, engine state) readable by any ENS tool.',
+              },
+              {
+                icon: Lock,
+                title: 'Policy Commitment Scheme',
+                desc: 'keccak256(strategyJSON) published on-chain. Anyone can verify the agent follows its original policy — without seeing the content.',
+              },
+            ].map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-5">
+                <div className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#00A8B5]/15 text-[#00A8B5]">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <h3 className="font-heading font-semibold text-[#E1F5FE] mb-1.5 text-sm">{title}</h3>
+                <p className="text-xs leading-relaxed text-[#B0BEC5]">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* My Vaults */}
+        {mounted && vaults.length > 0 && (
+          <section id="my-vaults" className="mb-12">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-heading text-lg font-bold text-[#E1F5FE]">My Vaults</h2>
+              <Link href="/vault/create">
+                <Button size="sm" variant="outline" className="border-[#1A3C50] text-[#B0BEC5] hover:text-[#E1F5FE] hover:bg-[#1A3C50] gap-1.5 text-xs">
+                  <Plus className="h-3 w-3" />
+                  Add Vault
+                </Button>
+              </Link>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {vaults.map(vault => (
+                <VaultCard key={vault.id} vault={vault} />
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* CTA */}
         <section className="text-center py-12 mb-8">
           <h2 className="font-heading text-3xl font-bold text-[#E1F5FE] mb-4">Ready to deploy?</h2>
           <p className="text-[#B0BEC5] mb-8 max-w-md mx-auto">
-            Create your vault in under 2 minutes and let the agent start scalping immediately.
+            5-step wizard. Configure strategy, fund with USDC, and let the agent start scalping 5-minute markets.
           </p>
           <Link href="/vault/create">
             <Button size="lg" className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-bold gap-2 glow-teal px-8">
