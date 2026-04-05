@@ -145,7 +145,7 @@ PolyAgents integrates Hedera across five services with zero Solidity — pure `@
 - Full vault orchestrator: `lib/hedera/vault-init.ts` — initHederaVault (token + topic + identity + schedule)
 - Hedera SDK client: `lib/hedera/client.ts` — testnet client with operator credentials
 - Frontend audit trail page: `app/vault/[id]/audit/page.tsx` — local + HCS tabs, Mirror Node queries
-- Frontend HTS token gate page: `app/vault/[id]/token/page.tsx` — token card, gate status, NFT holdings
+- Frontend HT S token gate page: `app/vault/[id]/token/page.tsx` — token card, gate status, NFT holdings
 - Frontend agent control panel: `app/vault/[id]/agent/page.tsx` — HBAR gauge, payments, HCS-14 UAID, cycle log
 
 ### How easy is it to use the API / Protocol? (1 - very difficult, 10 - very easy)
