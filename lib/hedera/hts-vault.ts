@@ -66,5 +66,5 @@ export async function mintVaultShares(
 
   const response = await tx.execute(client)
   const receipt = await response.getReceipt(client)
-  return receipt.transactionId?.toString() ?? ''
+  return response.transactionId?.toString() ?? ''
 }

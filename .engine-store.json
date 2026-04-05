@@ -10,6 +10,17 @@
       "stoppedAt": 1775348460132,
       "lastHeartbeatAt": 1775348446278,
       "lastError": null
+    },
+    "vault-1775358869487-9ezj3": {
+      "id": "run-1775359304567-cgib1n",
+      "vaultId": "vault-1775358869487-9ezj3",
+      "status": "stopped",
+      "currentState": "IDLE",
+      "activeMarketId": null,
+      "startedAt": 1775359304567,
+      "stoppedAt": 1775360598277,
+      "lastHeartbeatAt": 1775359802189,
+      "lastError": null
     }
   },
   "marketStates": {
@@ -54,6 +65,96 @@
       "buyCancelDone": false,
       "sellCancelDone": false,
       "pendingOldMarketId": "sim-btc5m-1775348100"
+    },
+    "vault-1775349758313-23etk": {
+      "market": {
+        "conditionId": "sim-btc5m-1775354100",
+        "slug": "btc-updown-5m-1775354100",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775354100)",
+        "yesTokenId": "sim-yes-1775354100",
+        "noTokenId": "sim-no-1775354100",
+        "startTs": 1775354100,
+        "endTs": 1775354400,
+        "tickSize": 0.01,
+        "minOrderSize": 1
+      },
+      "sides": {
+        "YES": {
+          "submittedBuyQty": 0,
+          "filledBuyQty": 0,
+          "openBuyQty": 0,
+          "submittedSellQty": 0,
+          "filledSellQty": 0,
+          "openSellQty": 0,
+          "unsoldInventory": 0,
+          "realizedPnl": 0,
+          "completedCycles": 0
+        },
+        "NO": {
+          "submittedBuyQty": 0,
+          "filledBuyQty": 0,
+          "openBuyQty": 0,
+          "submittedSellQty": 0,
+          "filledSellQty": 0,
+          "openSellQty": 0,
+          "unsoldInventory": 0,
+          "realizedPnl": 0,
+          "completedCycles": 0
+        }
+      },
+      "totalNewEntries": 0,
+      "isExpired": false,
+      "buyCancelDone": false,
+      "sellCancelDone": false,
+      "pendingOldMarketId": "sim-btc5m-1775353500",
+      "arcMarketId": null,
+      "arcResolved": false,
+      "arcClaimed": false
+    },
+    "vault-1775358869487-9ezj3": {
+      "market": {
+        "conditionId": "sim-btc5m-1775360400",
+        "slug": "btc-updown-5m-1775360400",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775360400)",
+        "yesTokenId": "sim-yes-1775360400",
+        "noTokenId": "sim-no-1775360400",
+        "startTs": 1775360400,
+        "endTs": 1775360700,
+        "tickSize": 0.01,
+        "minOrderSize": 1
+      },
+      "sides": {
+        "YES": {
+          "submittedBuyQty": 0,
+          "filledBuyQty": 0,
+          "openBuyQty": 0,
+          "submittedSellQty": 0,
+          "filledSellQty": 0,
+          "openSellQty": 0,
+          "unsoldInventory": 0,
+          "realizedPnl": 0,
+          "completedCycles": 0
+        },
+        "NO": {
+          "submittedBuyQty": 0,
+          "filledBuyQty": 0,
+          "openBuyQty": 0,
+          "submittedSellQty": 0,
+          "filledSellQty": 0,
+          "openSellQty": 0,
+          "unsoldInventory": 0,
+          "realizedPnl": 0,
+          "completedCycles": 0
+        }
+      },
+      "totalNewEntries": 0,
+      "isExpired": false,
+      "buyCancelDone": false,
+      "sellCancelDone": false,
+      "pendingOldMarketId": "sim-btc5m-1775359800",
+      "arcMarketId": 4,
+      "arcResolved": false,
+      "arcClaimed": false
     }
   },
   "orders": {},
@@ -87,6 +188,111 @@
         "type": "ENGINE_STOPPED",
         "runId": "run-1775348317243-hkxkxd",
         "timestamp": 1775348460133
+      }
+    ],
+    "vault-1775349758313-23etk": [
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "none",
+        "newMarketId": "sim-btc5m-1775349600",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775349600)",
+        "timestamp": 1775349887246
+      },
+      {
+        "type": "ARC_MARKET_CREATE_FAILED",
+        "error": "Error: Attempted to call getVaultById() from the server but getVaultById is on the client. It's not possible to invoke a client function from the server, it can only be rendered as a Component or passed to props of a Client Component.",
+        "timestamp": 1775353788182
+      },
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "sim-btc5m-1775349600",
+        "newMarketId": "sim-btc5m-1775353500",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775353500)",
+        "timestamp": 1775353788183
+      },
+      {
+        "type": "ARC_MARKET_CREATE_FAILED",
+        "error": "Error: Attempted to call getVaultById() from the server but getVaultById is on the client. It's not possible to invoke a client function from the server, it can only be rendered as a Component or passed to props of a Client Component.",
+        "timestamp": 1775354241852
+      },
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "sim-btc5m-1775353500",
+        "newMarketId": "sim-btc5m-1775354100",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775354100)",
+        "timestamp": 1775354241853
+      }
+    ],
+    "vault-1775358869487-9ezj3": [
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "none",
+        "newMarketId": "sim-btc5m-1775359200",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775359200)",
+        "timestamp": 1775359276532
+      },
+      {
+        "type": "ARC_MARKET_CREATED",
+        "arcMarketId": 1,
+        "txHash": "0xac525847c5bd6422432080ef5c851476beeaf604a4fbb87d0b66b8afff329b22",
+        "hederaTopicId": "",
+        "policyHash": "",
+        "timestamp": 1775359281254
+      },
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "sim-btc5m-1775359200",
+        "newMarketId": "sim-btc5m-1775359500",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775359500)",
+        "timestamp": 1775359620316
+      },
+      {
+        "type": "ARC_MARKET_CREATED",
+        "arcMarketId": 2,
+        "txHash": "0xbf15488d249d48006af4dfa3c0eb331056d2b4eec40e55164060867b12569b01",
+        "hederaTopicId": "",
+        "policyHash": "",
+        "timestamp": 1775359625029
+      },
+      {
+        "type": "MARKET_EXPIRED",
+        "marketId": "sim-btc5m-1775359500",
+        "timestamp": 1775359802153
+      },
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "sim-btc5m-1775359500",
+        "newMarketId": "sim-btc5m-1775359800",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775359800)",
+        "timestamp": 1775359802408
+      },
+      {
+        "type": "ARC_MARKET_CREATED",
+        "arcMarketId": 3,
+        "txHash": "0x60b20f9f7bc0f8a53ea7d29697417aad5de82177fa7ae4399c57be9b1f2fb3d4",
+        "hederaTopicId": "",
+        "policyHash": "",
+        "timestamp": 1775359806833
+      },
+      {
+        "type": "MARKET_ROLLOVER",
+        "oldMarketId": "sim-btc5m-1775359800",
+        "newMarketId": "sim-btc5m-1775360400",
+        "question": "Will Bitcoin go UP in the next 5 minutes? (window 1775360400)",
+        "timestamp": 1775360597440
+      },
+      {
+        "type": "ENGINE_STOPPED",
+        "runId": "run-1775359304567-cgib1n",
+        "timestamp": 1775360598277
+      },
+      {
+        "type": "ARC_MARKET_CREATED",
+        "arcMarketId": 4,
+        "txHash": "0x1223052b405c615b3beb0bb043291b039eec484fc72a10c211951d7e778b7ebc",
+        "hederaTopicId": "",
+        "policyHash": "",
+        "timestamp": 1775360601880
       }
     ]
   },

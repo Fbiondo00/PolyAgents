@@ -44,15 +44,20 @@ export async function updateAgentStats(
 /**
  * Read agent stats from ENS (for verification dashboard).
  * Also includes policy.commitment if present.
+ * Uses parallel reads to avoid sequential timeout buildup.
  */
 export async function readAgentStats(
   ensName: string
 ): Promise<Record<string, string>> {
   const keys = ["policy.commitment", ...AGENT_STAT_KEYS]
-  const result: Record<string, string> = {}
-  for (const key of keys) {
-    const value = await readTextRecord(ensName, key)
-    if (value) result[key] = value
+  const results = await Promise.allSettled(
+    keys.map((key) => readTextRecord(ensName, key).then((value) => ({ key, value })))
+  )
+  const record: Record<string, string> = {}
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value.value) {
+      record[r.value.key] = r.value.value
+    }
   }
-  return result
+  return record
 }

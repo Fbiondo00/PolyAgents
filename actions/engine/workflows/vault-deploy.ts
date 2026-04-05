@@ -46,6 +46,17 @@ export async function vaultDeployWorkflow(
         await initVaultENS({
           vaultId,
           vaultName: opts.vaultName,
+          strategy: {
+            bidPrice: 0.01,
+            sellPrice: 0.02,
+            maxCapital: 100,
+            trancheSize: 10,
+            noNewEntriesLast: 10,
+            keepSellAfter: 10,
+            aiEnabled: true,
+          },
+          mode: "advisory",
+          funding: { usdc: 0, hbar: 0 },
         })
       } catch (err) {
         errors.push(`ENS init failed: ${err}`)

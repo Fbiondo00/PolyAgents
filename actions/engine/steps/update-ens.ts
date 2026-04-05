@@ -6,18 +6,12 @@
 import { getMarketState, getRun } from "@/actions/engine/store"
 import { updateAgentStats } from "@/lib/ens/agent-stats"
 import { buildEnsName } from "@/lib/ens/subname"
-import { getVaultById } from "@/lib/store"
 
 export async function updateEns(vaultId: string): Promise<boolean> {
   const state = getMarketState(vaultId)
   const run = getRun(vaultId)
-  const vault = getVaultById(vaultId)
-  if (!vault?.ens?.name) {
-    console.warn(`[update-ens] no ENS name configured`)
-    return false
-  }
+  const ensName = buildEnsName(vaultId)
 
-  const ensName = vault.ens.name
   console.log(`[update-ens] updating ENS stats`, { vaultId, ensName })
 
   // Aggregate stats from engine state
@@ -38,7 +32,7 @@ export async function updateEns(vaultId: string): Promise<boolean> {
       pnl: totalPnl,
       inventoryUp: yesInventory,
       inventoryDown: noInventory,
-      mode: vault.mode === "auto" ? "auto" : "advisory",
+      mode: "advisory" as const,
       cycles: totalCycles,
       lastTrade: new Date().toISOString(),
       engineState: run?.currentState ?? "IDLE",

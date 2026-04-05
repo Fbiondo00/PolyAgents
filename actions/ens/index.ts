@@ -5,7 +5,8 @@ import { computePolicyHash, commitPolicyHash, verifyPolicyIntegrity } from "@/li
 import { readAgentStats } from "@/lib/ens/agent-stats"
 import { resolveAgentProfile } from "@/lib/ens/agent-identity"
 import { buildEnsName } from "@/lib/ens/subname"
-import type { Vault } from "@/types"
+import { initVaultENS, buildEnsContext } from "@/lib/ens/vault-ens-init"
+import type { Vault } from "@/types/vault"
 
 // ── Result Types ──
 
@@ -104,6 +105,46 @@ export async function fetchAgentProfile(vaultId: string): Promise<AgentProfileRe
     const ensName = buildEnsName(vaultId)
     const profile = await resolveAgentProfile(ensName)
     return { success: true, profile }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return { success: false, error: message }
+  }
+}
+
+/**
+ * Re-run full ENS initialization for an existing vault.
+ * Creates subname, commits policy hash, writes agent stats, metadata, ENSIP-25, fleet registry.
+ * Vault data is passed from the client (server can't access localStorage).
+ * Returns ENS context for the client to persist locally.
+ */
+export interface ReinitENSResult {
+  success: boolean
+  ensName?: string
+  txHashes?: string[]
+  ensContext?: Vault["ens"]
+  error?: string
+}
+
+export async function reinitializeENS(
+  vaultId: string,
+  vault: Pick<Vault, "name" | "strategy" | "mode" | "funding" | "hedera">,
+): Promise<ReinitENSResult> {
+  try {
+    const result = await initVaultENS({
+      vaultId,
+      vaultName: vault.name,
+      strategy: vault.strategy,
+      mode: vault.mode,
+      funding: vault.funding,
+      hederaContext: vault.hedera ?? undefined,
+    })
+
+    return {
+      success: true,
+      ensName: result.ensName,
+      txHashes: result.txHashes,
+      ensContext: buildEnsContext(result),
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return { success: false, error: message }

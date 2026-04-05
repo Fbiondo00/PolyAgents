@@ -19,10 +19,10 @@ import {
 
 const DEFAULT_CONFIG: StrategyConfig = {
   enabled: true,
-  entryPrice: 0.01,
-  exitPrice: 0.02,
+  entryPrice: 0.20,
+  exitPrice: 0.25,
   orderSize: 10,
-  maxTradesPerMarket: 50,
+  maxTradesPerMarket: 1,
   maxTradesPolicy: "side",
   noNewEntriesLastSeconds: 10,
   keepSellOrdersAfterExpirySeconds: 10,
@@ -30,7 +30,7 @@ const DEFAULT_CONFIG: StrategyConfig = {
   strictPassiveOnly: true,
   allowBothSides: true,
   cancelOpenBuysOnExpiry: true,
-  autoReentryEnabled: true,
+  autoReentryEnabled: false,
 }
 
 export async function checkFills(
@@ -101,12 +101,13 @@ async function checkLiveFills(vaultId: string, runId: string): Promise<number> {
         ledger.filledBuyQty += newFill
         ledger.openBuyQty -= newFill
         ledger.unsoldInventory += newFill
+        // Track cost basis for PnL calculation on sell
+        ledger.realizedPnl -= newFill * o.price
       } else {
         ledger.filledSellQty += newFill
         ledger.openSellQty -= newFill
-        const costBasis = newFill * o.price * 0.01
-        const proceeds = newFill * 0.02
-        ledger.realizedPnl += proceeds - costBasis
+        // PnL = sell proceeds (add back) — cost was already subtracted on buy fill
+        ledger.realizedPnl += newFill * o.price
       }
 
       fillCount++

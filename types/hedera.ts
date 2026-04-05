@@ -39,6 +39,14 @@ export type AuditEventType =
   | 'SCHEDULE_CREATED'
   | 'AGENT_REGISTERED'
   | 'ERROR'
+  | 'CYCLE_RESULT'
+  | 'MARKET_DISCOVERED'
+  | 'AI_DECISION'
+  | 'ORDERS_PLACED'
+  | 'FILLS_DETECTED'
+  | 'SELLS_PLACED'
+  | 'RECONCILIATION'
+  | 'PNL_UPDATE'
 
 export interface HCSLogPayload {
   event: AuditEventType
@@ -112,6 +120,6 @@ export interface ScheduleResult {
 export interface ScheduleStatus {
   executed: boolean
   deleted: boolean
-  memo: string
+  memo: string | null
   creator: string | null
 }

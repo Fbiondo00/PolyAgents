@@ -33,11 +33,15 @@ export async function discoverActiveMarket(now?: number): Promise<ActiveMarket |
 
   for (const slug of candidates) {
     try {
-      const res = await fetch(`${GAMMA_BASE}/markets?slug=${slug}&active=true&closed=false`);
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const parsed = parsePolymarketMarket(data[0]);
-        if (parsed) return parsed;
+      // BTC 5-min markets live under /events (not /markets)
+      const res = await fetch(`${GAMMA_BASE}/events?slug=${slug}`);
+      const events = await res.json();
+      if (Array.isArray(events) && events.length > 0) {
+        const markets = events[0].markets ?? [];
+        if (markets.length > 0) {
+          const parsed = parsePolymarketMarket(markets[0]);
+          if (parsed) return parsed;
+        }
       }
     } catch { /* continue */ }
   }
@@ -64,8 +68,13 @@ export async function discoverActiveMarket(now?: number): Promise<ActiveMarket |
 function parsePolymarketMarket(raw: any): ActiveMarket | null {
   const tokens: string[] = raw.clobTokenIds ?? [];
   const outcomes: string[] = raw.outcomes ?? [];
-  const yesIdx = outcomes.findIndex((o: string) => o.toUpperCase() === "YES");
-  const noIdx = outcomes.findIndex((o: string) => o.toUpperCase() === "NO");
+  // Support both YES/NO (standard Polymarket) and Up/Down (BTC 5-min markets)
+  const yesIdx = outcomes.findIndex((o: string) =>
+    ["YES", "UP"].includes(o.toUpperCase())
+  );
+  const noIdx = outcomes.findIndex((o: string) =>
+    ["NO", "DOWN"].includes(o.toUpperCase())
+  );
   if (yesIdx === -1 || noIdx === -1 || !tokens[yesIdx] || !tokens[noIdx]) return null;
 
   return {

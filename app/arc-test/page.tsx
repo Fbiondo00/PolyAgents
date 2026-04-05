@@ -47,7 +47,7 @@ export default function ArcTestPage() {
     try {
       const count = await getMarketCount(c.pc, c.contract);
       addLog(`Market count: ${count}`);
-      if (count === 0n) {
+      if (count === BigInt(0)) {
         setMarkets([]);
         return;
       }

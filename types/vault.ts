@@ -7,6 +7,7 @@ export interface AuditEvent {
   price?: number
   pnl?: number
   reasoning?: string
+  txHash?: string
 }
 
 export interface Vault {
@@ -60,11 +61,11 @@ export const DEMO_VAULT: Vault = {
   name: 'BTC Scalper Demo',
   created: Date.now() - 86400000 * 3,
   strategy: {
-    bidPrice: 0.01,
-    sellPrice: 0.02,
-    maxCapital: 100,
-    trancheSize: 15,
-    noNewEntriesLast: 30,
+    bidPrice: 0.20,
+    sellPrice: 0.25,
+    maxCapital: 0,
+    trancheSize: 10,
+    noNewEntriesLast: 10,
     keepSellAfter: 10,
     aiEnabled: true,
   },

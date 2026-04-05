@@ -55,6 +55,7 @@ export default function MarketsPage() {
         return
       }
       const data = await fetchAllMarkets()
+      if (!Array.isArray(data)) { setMarkets([]); return }
       setMarkets(data as unknown as ArcMarket[])
       if (data.length > 0 && !selectedMarketId) {
         setSelectedMarketId(Number((data as unknown as ArcMarket[])[0].marketId))
@@ -77,10 +78,14 @@ export default function MarketsPage() {
   // Fetch odds when market selection changes
   useEffect(() => {
     if (selectedMarketId == null) return
-    fetchOdds(selectedMarketId).then(odds => setSelectedOdds(odds)).catch(() => setSelectedOdds(null))
+    fetchOdds(selectedMarketId).then(odds => { if ('yesOdds' in odds) setSelectedOdds(odds); else setSelectedOdds(null) }).catch(() => setSelectedOdds(null))
   }, [selectedMarketId])
 
   const selectedMarket = markets.find(m => Number(m.marketId) === selectedMarketId) ?? null
+  const yesP = selectedMarket
+    ? selectedMarket.totalYes === '0' && selectedMarket.totalNo === '0' ? 50
+      : Math.round((Number(selectedMarket.totalYes) / (Number(selectedMarket.totalYes) + Number(selectedMarket.totalNo))) * 100)
+    : 50
 
   async function handleCreateMarket() {
     if (!vault || !newQuestion.trim()) return
@@ -93,6 +98,7 @@ export default function MarketsPage() {
         hederaTopicId: '0.0.pending',
         policyHash: '0x' + '00'.repeat(32),
       })
+      if (!res.success) throw new Error(res.error ?? 'Failed to create market')
       toast.success(`Market #${res.marketId} created`)
       setNewQuestion('')
       await loadMarkets()
@@ -112,6 +118,7 @@ export default function MarketsPage() {
         isYes: betSide === 'YES',
         amountUsdc: Number(betAmount),
       })
+      if (!res.success) throw new Error(res.error ?? 'Failed to place bet')
       addAuditEvent(vault.id, {
         id: generateAuditId(),
         type: 'bid-placed',
@@ -127,7 +134,7 @@ export default function MarketsPage() {
       await loadMarkets()
       if (selectedMarketId != null) {
         const odds = await fetchOdds(selectedMarketId)
-        setSelectedOdds(odds)
+        if ('yesOdds' in odds) setSelectedOdds(odds)
       }
     } catch (err) {
       toast.error(`Failed: ${(err as Error).message}`)

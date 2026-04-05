@@ -1,6 +1,7 @@
 // CLOB adapter — wraps @polymarket/clob-client behind a unified interface
-// Two modes selected by POLYMARKET_LIVE env var:
+// Three modes selected by POLYMARKET_LIVE env var:
 //   LIVE=true  → LiveClobAdapter  (real orders on Polygon via @polymarket/clob-client)
+//   LIVE=demo  → LiveClobAdapter  (real CLOB, but bridges are skipped in the cycle)
 //   LIVE=false → ReadOnlyClobAdapter (real market data, simulated fills)
 
 import type { BookTop } from "../types";
@@ -107,7 +108,7 @@ class LiveClobAdapter implements ClobAdapter {
     const pk = process.env.POLYMARKET_PRIVATE_KEY;
     if (!pk) throw new Error("POLYMARKET_PRIVATE_KEY not set for live mode");
 
-    const account = privateKeyToAccount(pk);
+    const account = privateKeyToAccount(pk as `0x${string}`);
     const funderPk = process.env.POLYMARKET_FUNDER_PRIVATE_KEY as `0x${string}` | undefined;
     const funderAddress = funderPk ? privateKeyToAccount(funderPk).address : undefined;
 
@@ -115,7 +116,7 @@ class LiveClobAdapter implements ClobAdapter {
     this.client = new ClobClient(
       "https://clob.polymarket.com",
       Number(Chain.POLYGON),
-      account,
+      account as any,
       undefined,
       undefined,
       funderAddress,
@@ -132,7 +133,7 @@ class LiveClobAdapter implements ClobAdapter {
       this.client = new ClobClient(
         "https://clob.polymarket.com",
         Number(Chain.POLYGON),
-        account,
+        account as any,
         this.creds,
         undefined,
         funderAddress,
@@ -144,7 +145,7 @@ class LiveClobAdapter implements ClobAdapter {
         this.client = new ClobClient(
           "https://clob.polymarket.com",
           Number(Chain.POLYGON),
-          account,
+          account as any,
           this.creds,
           undefined,
           funderAddress,
@@ -176,6 +177,12 @@ class LiveClobAdapter implements ClobAdapter {
   }
 
   async placeOrder(tokenId: string, side: "BUY" | "SELL", price: number, size: number): Promise<OrderResult> {
+    // Simulated tokens don't exist on the real CLOB — return a simulated order
+    if (tokenId.startsWith("sim-")) {
+      const id = `sim-ord-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return { orderId: id, simulated: true };
+    }
+
     const { Side, OrderType } = await import("@polymarket/clob-client");
 
     const userOrder = {
@@ -266,10 +273,20 @@ function mapPolymarketStatus(s: string): ClobOrder["status"] {
 let _adapter: ClobAdapter | null = null;
 let _initialized = false;
 
+/** True when POLYMARKET_LIVE is "true" or "demo" — real CLOB trading. */
+export function isLiveMode(): boolean {
+  const v = process.env.POLYMARKET_LIVE;
+  return v === "true" || v === "demo";
+}
+
+/** True when POLYMARKET_LIVE is "demo" — real CLOB but skip bridges. */
+export function isDemoMode(): boolean {
+  return process.env.POLYMARKET_LIVE === "demo";
+}
+
 export async function getClobAdapter(): Promise<ClobAdapter> {
   if (!_adapter) {
-    const live = process.env.POLYMARKET_LIVE === "true";
-    _adapter = live ? new LiveClobAdapter() : new ReadOnlyClobAdapter();
+    _adapter = isLiveMode() ? new LiveClobAdapter() : new ReadOnlyClobAdapter();
   }
   if (!_initialized) {
     await _adapter.initialize();

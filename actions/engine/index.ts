@@ -32,10 +32,10 @@ export interface StartResult {
 
 const DEFAULT_CONFIG: StrategyConfig = {
   enabled: true,
-  entryPrice: 0.01,
-  exitPrice: 0.02,
+  entryPrice: 0.20,
+  exitPrice: 0.25,
   orderSize: 10,
-  maxTradesPerMarket: 50,
+  maxTradesPerMarket: 1,
   maxTradesPolicy: "side",
   noNewEntriesLastSeconds: 10,
   keepSellOrdersAfterExpirySeconds: 10,
@@ -43,7 +43,7 @@ const DEFAULT_CONFIG: StrategyConfig = {
   strictPassiveOnly: true,
   allowBothSides: true,
   cancelOpenBuysOnExpiry: true,
-  autoReentryEnabled: true,
+  autoReentryEnabled: false,
 }
 
 // ── Actions ──

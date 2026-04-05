@@ -318,10 +318,10 @@ export default function AuditPage() {
                             <Badge className="text-[10px] bg-[#00A8B5]/20 text-[#00A8B5] border-[#00A8B5]/30">
                               {String(msg.parsed.event ?? 'unknown')}
                             </Badge>
-                            {msg.parsed.vault_id && (
+                            {msg.parsed.vault_id != null && (
                               <p className="text-xs text-[#B0BEC5]">Vault: {String(msg.parsed.vault_id)}</p>
                             )}
-                            {msg.parsed.reasoning && (
+                            {msg.parsed.reasoning != null && (
                               <p className="text-xs text-[#B0BEC5]">{String(msg.parsed.reasoning)}</p>
                             )}
                           </div>

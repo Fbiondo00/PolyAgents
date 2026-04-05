@@ -57,11 +57,11 @@ export default function CreateVaultPage() {
   const walletConnected = authenticated && wallets.length > 0
   const walletAddress = (wallets[0]?.address ?? '') as string
   const [strategy, setStrategy] = useState<Vault['strategy']>({
-    bidPrice: 0.01,
-    sellPrice: 0.02,
-    maxCapital: 100,
-    trancheSize: 15,
-    noNewEntriesLast: 30,
+    bidPrice: 0.20,
+    sellPrice: 0.25,
+    maxCapital: 0,
+    trancheSize: 10,
+    noNewEntriesLast: 10,
     keepSellAfter: 10,
     aiEnabled: true,
   })
@@ -84,6 +84,13 @@ export default function CreateVaultPage() {
       fetchUsdcBalance(walletAddress).then(setOnChainBalance)
     }
   }, [step, walletAddress])
+
+  // Sync on-chain USDC balance into strategy.maxCapital
+  useEffect(() => {
+    if (onChainBalance !== null) {
+      setStrategy(prev => ({ ...prev, maxCapital: parseFloat(onChainBalance) }))
+    }
+  }, [onChainBalance])
 
   async function handleApprove() {
     if (!usdcFunding || !wallets[0]) return
@@ -119,9 +126,12 @@ export default function CreateVaultPage() {
     const id = generateId()
     setNewVaultId(id)
 
+    // ── Phase 1: Hedera deployment ──
+    // initVault is a single server action — all 8 Hedera steps run server-side.
+    // We advance the stage to indicate activity while waiting.
     setDeployStage(0) // "Connecting to Hedera…"
 
-    // ── Phase 1: Hedera deployment ──
+    // Run Hedera init — this takes ~27s and handles all 8 backend steps
     const result = await initVault({
       vaultId: id,
       vaultName,
@@ -134,11 +144,8 @@ export default function CreateVaultPage() {
       return
     }
 
-    // Advance Hedera stages (0-4)
-    for (let i = 1; i < 5; i++) {
-      setDeployStage(i)
-      await new Promise(r => setTimeout(r, 400))
-    }
+    // Mark all Hedera stages as complete
+    setDeployStage(4) // Skip to "Logging deployment to HCS…" (last Hedera stage)
 
     // ── Phase 2: ENS initialization ──
     let ensResult: Awaited<ReturnType<typeof initVaultENS>> | null = null
@@ -153,18 +160,10 @@ export default function CreateVaultPage() {
         funding: { usdc: parseFloat(usdcFunding) || 100, hbar: 1.0 },
         hederaContext: result.context,
       })
-      setDeployStage(6) // "Committing policy hash…"
-      await new Promise(r => setTimeout(r, 400))
-      setDeployStage(7) // "Registering agent fleet…"
-      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(8) // "Vault live!"
     } catch (ensErr) {
       console.warn('ENS initialization failed (non-blocking):', ensErr)
-      setDeployStage(5)
-      await new Promise(r => setTimeout(r, 400))
-      setDeployStage(6)
-      await new Promise(r => setTimeout(r, 400))
-      setDeployStage(7)
-      await new Promise(r => setTimeout(r, 400))
+      setDeployStage(8) // "Vault live!" (ENS is non-blocking)
     }
 
     // Note: USDC approval is now done by the user in Step 3 (Funding) via Privy wallet signing.

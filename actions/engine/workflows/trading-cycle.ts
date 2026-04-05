@@ -13,19 +13,19 @@ import { checkFills } from "@/actions/engine/steps/check-fills"
 import { sellCoverage } from "@/actions/engine/steps/sell-coverage"
 import { handleExpiry } from "@/actions/engine/steps/handle-expiry"
 import { reconcile } from "@/actions/engine/steps/reconcile"
-import { logHedera } from "@/actions/engine/steps/log-hedera"
+import { logHedera, logEngineStep } from "@/actions/engine/steps/log-hedera"
 import { updateEns } from "@/actions/engine/steps/update-ens"
-import { mirrorBetToArc } from "@/actions/engine/steps/mirror-arc"
+import { mirrorBetToArc, resolveArcMarket, fetchPolymarketOutcome } from "@/actions/engine/steps/mirror-arc"
 import { ensurePolygonLiquidity, repatriateProfitsToArc } from "@/actions/engine/steps/ensure-polygon-liquidity"
-import { getClobAdapter } from "@/lib/engine/adapters/polymarket-clob"
+import { getClobAdapter, isDemoMode, isLiveMode } from "@/lib/engine/adapters/polymarket-clob"
 import { getTopOfBook } from "@/lib/engine/adapters/polymarket-readonly"
 
 const DEFAULT_CONFIG: StrategyConfig = {
   enabled: true,
-  entryPrice: 0.01,
-  exitPrice: 0.02,
+  entryPrice: 0.20,
+  exitPrice: 0.25,
   orderSize: 10,
-  maxTradesPerMarket: 50,
+  maxTradesPerMarket: 1,
   maxTradesPolicy: "side",
   noNewEntriesLastSeconds: 10,
   keepSellOrdersAfterExpirySeconds: 10,
@@ -33,7 +33,7 @@ const DEFAULT_CONFIG: StrategyConfig = {
   strictPassiveOnly: true,
   allowBothSides: true,
   cancelOpenBuysOnExpiry: true,
-  autoReentryEnabled: true,
+  autoReentryEnabled: false,
 }
 
 export async function tradingCycleWorkflow(
@@ -48,6 +48,8 @@ export async function tradingCycleWorkflow(
   let totalFills = 0
   let decision: CycleResult["decision"]
   let arcMarketId: number | undefined
+  // hederaTopicId is client-side only — skip oracle payment if unavailable
+  const topicId: string | null = null
 
   console.log(`[cycle] ═══════════════════════════════════════`)
   console.log(`[cycle] VAULT `, { vaultId })
@@ -66,13 +68,29 @@ export async function tradingCycleWorkflow(
     const toExpiry = market.endTs - Math.floor(Date.now() / 1000)
     console.log(`[cycle] → BTC 5-min market`, { question: market.question, endTs: market.endTs, yesTokenId: market.yesTokenId, noTokenId: market.noTokenId, toExpiry: `${toExpiry}s` })
 
+    // 1b. Log market discovery to HCS
+    logEngineStep(topicId, vaultId, "MARKET_DISCOVERED", {
+      slug: market.slug,
+      question: market.question,
+      endTs: market.endTs,
+      yesTokenId: market.yesTokenId,
+      noTokenId: market.noTokenId,
+    }).catch(() => {})
+
     // 2. AI analysis
     console.log(`[cycle] step 2: analyze`)
     decision = await aiAnalysis(vaultId)
 
+    // 2b. Log AI decision to HCS
+    logEngineStep(topicId, vaultId, "AI_DECISION", {
+      shouldTrade: decision.shouldTrade,
+      direction: decision.direction,
+      confidence: decision.confidence,
+      reasoning: decision.reasoning,
+    }).catch(() => {})
+
     // 3. Pay oracle the exact LLM cost in HBAR
     console.log(`[cycle] step 3: pay-oracle`)
-    const topicId = run.activeMarketId ?? null
     if (topicId && decision.usage) {
       try {
         const { payForAgentCycle } = await import("@/lib/hedera/agent-payment")
@@ -88,14 +106,19 @@ export async function tradingCycleWorkflow(
     await handleExpiry(vaultId, config)
 
     // 4.5. Ensure Polygon liquidity (auto-bridge USDC from Arc if needed)
-    console.log(`[cycle] step 4.5: ensure-polygon-liquidity`)
-    try {
-      const liquidity = await ensurePolygonLiquidity(vaultId)
-      if (liquidity.bridged) {
-        console.log(`[cycle] bridged ${liquidity.bridgeAmount} USDC Arc→Polygon`)
+    // Skipped in simulator mode — no real orders, no bridge needed
+    if (isLiveMode()) {
+      console.log(`[cycle] step 4.5: ensure-polygon-liquidity`)
+      try {
+        const liquidity = await ensurePolygonLiquidity(vaultId)
+        if (liquidity.bridged) {
+          console.log(`[cycle] bridged ${liquidity.bridgeAmount} USDC Arc→Polygon`)
+        }
+      } catch (bridgeErr) {
+        console.warn(`[cycle] bridge step failed (non-blocking):`, bridgeErr)
       }
-    } catch (bridgeErr) {
-      console.warn(`[cycle] bridge step failed (non-blocking):`, bridgeErr)
+    } else {
+      console.log(`[cycle] step 4.5: skip (simulator mode — no bridge)`)
     }
 
     // 5. Place bets (if AI approves or in manual mode)
@@ -104,19 +127,49 @@ export async function tradingCycleWorkflow(
       await placeBets(vaultId, config)
     }
 
+    // 5b. Log orders placed to HCS
+    logEngineStep(topicId, vaultId, "ORDERS_PLACED", {
+      shouldTrade: decision.shouldTrade,
+      direction: decision.direction,
+    }).catch(() => {})
+
     // 6. Check fills
     console.log(`[cycle] step 6: fills`)
     totalFills = await checkFills(vaultId, config)
+
+    // 6b. Log fills detected to HCS
+    logEngineStep(topicId, vaultId, "FILLS_DETECTED", {
+      fills_count: totalFills,
+    }).catch(() => {})
 
     // 7. Sell coverage for filled inventory
     console.log(`[cycle] step 7: sell`)
     await sellCoverage(vaultId, config)
 
-    // 8. Mirror filled bets to Arc vault (non-blocking)
+    // 7b. Log sells placed to HCS
+    const sellState = getMarketState(vaultId)
+    const yesFilledBuy = sellState?.sides.YES.filledBuyQty ?? 0
+    const noFilledBuy = sellState?.sides.NO.filledBuyQty ?? 0
+    logEngineStep(topicId, vaultId, "SELLS_PLACED", {
+      yes_filled_buy_qty: yesFilledBuy,
+      no_filled_buy_qty: noFilledBuy,
+    }).catch(() => {})
+
+    // 8. Mirror filled bets to Arc vault (non-blocking, both sides)
     console.log(`[cycle] step 8: mirror-arc`)
-    if (totalFills > 0) {
-      mirrorBetToArc(vaultId, "YES", totalFills).then(r => {
-        if (r.success) arcMarketId = r.arcMarketId
+    const mirrorState = getMarketState(vaultId)
+    if (mirrorState?.arcMarketId && totalFills > 0) {
+      arcMarketId = mirrorState.arcMarketId
+      const yesNet = mirrorState.sides.YES.filledBuyQty - mirrorState.sides.YES.filledSellQty
+      const noNet = mirrorState.sides.NO.filledBuyQty - mirrorState.sides.NO.filledSellQty
+      if (yesNet > 0) mirrorBetToArc(vaultId, "YES", yesNet).catch(() => {})
+      if (noNet > 0) mirrorBetToArc(vaultId, "NO", noNet).catch(() => {})
+    }
+
+    // 8.5 Retry Arc resolution if expired but not yet resolved (Polymarket delay)
+    if (mirrorState?.arcMarketId && !mirrorState.arcResolved && mirrorState.isExpired) {
+      fetchPolymarketOutcome(mirrorState.market.slug).then(outcome => {
+        if (outcome) resolveArcMarket(vaultId, outcome).catch(() => {})
       }).catch(() => {})
     }
 
@@ -125,6 +178,9 @@ export async function tradingCycleWorkflow(
     const cycleNum = getCycleCount(vaultId) + 1
     if (cycleNum % config.reconcileIntervalCycles === 0) {
       await reconcile(vaultId)
+      logEngineStep(topicId, vaultId, "RECONCILIATION", {
+        cycle_num: cycleNum,
+      }).catch(() => {})
     }
 
     // 10. Calculate PnL
@@ -135,16 +191,27 @@ export async function tradingCycleWorkflow(
       : 0
     console.log(`[cycle] cumulative`, { cycleNum, totalPnl: pnl.toFixed(4), totalFills })
 
+    // 10b. Log PnL to HCS
+    logEngineStep(topicId, vaultId, "PNL_UPDATE", {
+      cycle_num: cycleNum,
+      realized_pnl: state?.sides.YES.realizedPnl ?? 0,
+      unrealized_pnl: state?.sides.NO.realizedPnl ?? 0,
+      total_pnl: pnl,
+    }).catch(() => {})
+
     // 10.5. Repatriate profits: Polygon → Arc (if positive PnL, non-blocking)
-    // Returns USDC to Arc for oracle payments and vault settlement.
-    // The Vercel cron also runs this, but we do it in-cycle for faster response.
-    console.log(`[cycle] step 10.5: repatriate-profits`)
-    if (pnl > 0 && cycleNum % config.reconcileIntervalCycles === 0) {
-      repatriateProfitsToArc(vaultId, pnl.toFixed(2)).then(r => {
-        if (r.bridged) {
-          console.log(`[cycle] repatriated $${r.bridgeAmount} Polygon→Arc`)
-        }
-      }).catch(() => {})
+    // Skipped in simulator mode — no real orders, no bridge needed
+    if (isLiveMode()) {
+      console.log(`[cycle] step 10.5: repatriate-profits`)
+      if (pnl > 0 && cycleNum % config.reconcileIntervalCycles === 0) {
+        repatriateProfitsToArc(vaultId, pnl.toFixed(2)).then(r => {
+          if (r.bridged) {
+            console.log(`[cycle] repatriated $${r.bridgeAmount} Polygon→Arc`)
+          }
+        }).catch(() => {})
+      }
+    } else {
+      console.log(`[cycle] step 10.5: skip (simulator mode — no bridge)`)
     }
 
     // 11. Build activeMarket data for UI

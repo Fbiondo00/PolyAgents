@@ -40,6 +40,6 @@ export async function continuousWorkflow(
     }
 
     // Durable sleep — suspends workflow without consuming compute
-    await sleep(`${intervalSeconds}s`)
+    await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000))
   }
 }

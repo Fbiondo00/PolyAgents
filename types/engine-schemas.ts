@@ -4,11 +4,11 @@ import { z } from "zod";
 
 export const strategyConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  entryPrice: z.number().default(0.01),
-  exitPrice: z.number().default(0.02),
+  entryPrice: z.number().default(0.20),
+  exitPrice: z.number().default(0.25),
   orderSize: z.number().default(10),
   maxCapitalUsdc: z.number().optional(),
-  maxTradesPerMarket: z.number().int().default(50),
+  maxTradesPerMarket: z.number().int().default(1),
   maxTradesPolicy: z.enum(["side", "global"]).default("side"),
   noNewEntriesLastSeconds: z.number().int().default(10),
   keepSellOrdersAfterExpirySeconds: z.number().int().default(10),
@@ -17,7 +17,7 @@ export const strategyConfigSchema = z.object({
   strictPassiveOnly: z.boolean().default(true),
   allowBothSides: z.boolean().default(true),
   cancelOpenBuysOnExpiry: z.boolean().default(true),
-  autoReentryEnabled: z.boolean().default(true),
+  autoReentryEnabled: z.boolean().default(false),
 });
 
 export type StrategyConfig = z.infer<typeof strategyConfigSchema>;

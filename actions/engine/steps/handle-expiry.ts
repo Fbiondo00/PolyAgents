@@ -14,13 +14,14 @@ import {
   saveMarketState,
   addAuditEvent,
 } from "@/actions/engine/store"
+import { resolveArcMarket, fetchPolymarketOutcome } from "@/actions/engine/steps/mirror-arc"
 
 const DEFAULT_CONFIG: StrategyConfig = {
   enabled: true,
-  entryPrice: 0.01,
-  exitPrice: 0.02,
+  entryPrice: 0.20,
+  exitPrice: 0.25,
   orderSize: 10,
-  maxTradesPerMarket: 50,
+  maxTradesPerMarket: 1,
   maxTradesPolicy: "side",
   noNewEntriesLastSeconds: 10,
   keepSellOrdersAfterExpirySeconds: 10,
@@ -28,7 +29,7 @@ const DEFAULT_CONFIG: StrategyConfig = {
   strictPassiveOnly: true,
   allowBothSides: true,
   cancelOpenBuysOnExpiry: true,
-  autoReentryEnabled: true,
+  autoReentryEnabled: false,
 }
 
 async function cancelSideOrders(
@@ -107,6 +108,17 @@ export async function handleExpiry(
       marketId: state.market.conditionId,
       timestamp: Date.now(),
     })
+
+    // Resolve Arc market if it exists (non-blocking, fire-and-forget)
+    if (state.arcMarketId !== null && !state.arcResolved) {
+      const outcome = await fetchPolymarketOutcome(state.market.slug)
+      if (outcome) {
+        resolveArcMarket(vaultId, outcome).catch(() => {})
+      } else {
+        console.log(`[handle-expiry] Polymarket outcome not yet available — will retry next cycle`)
+      }
+    }
+
     actionTaken = true
   }
 

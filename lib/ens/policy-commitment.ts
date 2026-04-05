@@ -56,12 +56,27 @@ export async function verifyPolicyIntegrity(
   mode: Vault["mode"]
 ): Promise<PolicyVerificationResult> {
   const localHash = computePolicyHash(strategy, vaultName, mode)
+  console.log(`[ens:policy] verifying policy integrity`, {
+    ensName,
+    vaultName,
+    mode,
+    localHash,
+    strategyKeys: Object.keys(strategy),
+  })
   const onChainHash = await readTextRecord(ensName, "policy.commitment")
-  return {
-    match:
-      onChainHash !== null &&
-      onChainHash.toLowerCase() === localHash.toLowerCase(),
+  const match =
+    onChainHash !== null &&
+    onChainHash.toLowerCase() === localHash.toLowerCase()
+  console.log(`[ens:policy] verification result`, {
+    ensName,
     localHash,
     onChainHash,
-  }
+    match,
+    reason: onChainHash === null
+      ? "on-chain record not found (subname may not exist or resolver not set)"
+      : !match
+        ? "hash mismatch (strategy changed since commitment)"
+        : "hashes match",
+  })
+  return { match, localHash, onChainHash }
 }

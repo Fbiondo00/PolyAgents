@@ -164,8 +164,8 @@ export default function VaultDashboardPage() {
         />
         <KpiCard
           label="USDC Balance"
-          value={chainData ? `$${parseFloat(chainData.usdcBalance).toFixed(2)}` : `$${vault.funding.usdc.toFixed(2)}`}
-          sub={chainData ? 'On-chain (Arc)' : `${vault.funding.hbar.toFixed(3)} HBAR`}
+          value={`$${vault.funding.usdc.toFixed(2)}`}
+          sub={`${vault.funding.hbar.toFixed(3)} HBAR`}
         />
       </div>
 

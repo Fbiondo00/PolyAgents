@@ -89,7 +89,7 @@ export async function getScheduleStatus(scheduleId: string): Promise<ScheduleSta
   return {
     executed: info.executed !== null,
     deleted: info.deleted !== null,
-    memo: info.scheduleMemo,
+    memo: info.scheduleMemo ?? '',
     creator: info.creatorAccountId?.toString() ?? null,
   }
 }

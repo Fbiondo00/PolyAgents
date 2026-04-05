@@ -54,7 +54,7 @@ export function StrategyForm({ value, onChange, className }: StrategyFormProps) 
       {/* Max Capital */}
       <div className="space-y-3">
         <div className="flex justify-between">
-          <Label className="text-xs text-[#B0BEC5]">Max Capital</Label>
+          <Label className="text-xs text-[#B0BEC5]">Max Capital (wallet USDC)</Label>
           <span className="text-xs font-mono text-[#00A8B5]">${value.maxCapital}</span>
         </div>
         <Slider

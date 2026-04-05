@@ -33,6 +33,12 @@ export const arcTestnet = defineChain({
   blockExplorers: {
     default: { name: "Arc Explorer", url: "https://explorer.testnet.arc.network" },
   },
+  contracts: {
+    multicall3: {
+      address: "0xcA11bde05977b3631167028862bE2a173976CA11",
+      blockCreated: 1,
+    },
+  },
 });
 
 export const localAnvil = defineChain({
@@ -71,6 +77,7 @@ export interface MarketOdds {
 }
 
 export interface MarketDataFormatted {
+  marketId?: number;
   question: string;
   category: string;
   resolutionTime: Date;
@@ -179,6 +186,7 @@ export async function getMarketFormatted(
     resolutionTime: new Date(Number(m.resolutionTime) * 1000),
     totalYes: formatUnits(m.totalYes, 6),
     totalNo: formatUnits(m.totalNo, 6),
+    marketId: Number(marketId),
   };
 }
 
@@ -273,7 +281,7 @@ export async function approveUsdc(
     abi: ERC20_ABI,
     functionName: "approve",
     args: [spender, amount],
-    account: walletClient.account,
+    account: walletClient.account!,
     chain: walletClient.chain,
   });
 }
@@ -303,7 +311,7 @@ export async function createMarket(
       opts.hederaTopicId,
       opts.policyHash,
     ],
-    account: walletClient.account,
+    account: walletClient.account!,
     chain: walletClient.chain,
   });
 
@@ -343,7 +351,7 @@ export async function placeBet(
     abi: POLYAGENTS_ABI,
     functionName: "placeBet",
     args: [opts.marketId, opts.isYes, amount],
-    account: walletClient.account,
+    account: walletClient.account!,
     chain: walletClient.chain,
   });
 
@@ -363,7 +371,7 @@ export async function resolveMarket(
     abi: POLYAGENTS_ABI,
     functionName: "resolveMarket",
     args: [marketId, outcome],
-    account: walletClient.account,
+    account: walletClient.account!,
     chain: walletClient.chain,
   });
 
@@ -382,7 +390,7 @@ export async function claimWinnings(
     abi: POLYAGENTS_ABI,
     functionName: "claimWinnings",
     args: [marketId],
-    account: walletClient.account,
+    account: walletClient.account!,
     chain: walletClient.chain,
   });
 
@@ -400,4 +408,4 @@ export function parseUsdc(amount: string | number): bigint {
   return parseUnits(amount.toString(), 6);
 }
 
-export { OUTCOME } from "./abi";
+export { OUTCOME, type Outcome } from "./abi";
