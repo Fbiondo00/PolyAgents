@@ -37,22 +37,22 @@ graph TB
     Arc -->|place_bet| PolyAgentsMarket.sol
     Arc -->|resolve| PolyAgentsMarket.sol
 
-    Hedera -->|HTS| Token Gate
-    Hedera -->|HCS| Audit Log
-    Hedera -->|HCS14| Agent Identity
+    Hedera -->|HTS| "Token Gate"
+    Hedera -->|HCS| "Audit Log"
+    Hedera -->|HCS14| "Agent Identity"
     Hedera -->|HBAR| Micropayments
     Hedera -->|Scheduled| TX
 
-    ENS -->|policy_hash| policy.commitment
-    ENS -->|agent_stats| agent.* text records
-    ENS -->|profile| ENSIP-25 identity
+    ENS -->|policy_hash| "policy.commitment"
+    ENS -->|agent_stats| "agent.* text records"
+    ENS -->|profile| "ENSIP-25 identity"
 
-    VercelAI -->|trade_decision| Gemini 2.0 Flash Lite
+    VercelAI -->|trade_decision| "Gemini 2.0 Flash Lite"
 
-    Polymarket -->|market_data| Gamma API
-    Polymarket -->|order_book| CLOB API
+    Polymarket -->|market_data| "Gamma API"
+    Polymarket -->|order_book| "CLOB API"
 
-    FillSim -->|deterministic| Real order book data
+    FillSim -->|deterministic| "Real order book data"
 ```
 
 ## Data Flow
