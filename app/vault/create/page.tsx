@@ -14,7 +14,14 @@ import { initVault } from '@/actions/hedera'
 import { initVaultENS, buildEnsContext } from '@/lib/ens/vault-ens-init'
 import { buildEnsName } from '@/lib/ens/subname'
 import { computePolicyHash } from '@/lib/ens/policy-commitment'
-import { fetchUsdcBalance, approveVaultFunding } from '@/actions/arc/fund-vault'
+import { fetchUsdcBalance } from '@/actions/arc/fund-vault'
+import {
+  getPrivyArcWalletClient,
+  getArcPublicClient,
+  approveUsdcFromPrivy,
+  ARC_EXPLORER,
+} from '@/lib/arc/privy-wallet'
+import { parseUnits, formatUnits } from 'viem'
 import { cn } from '@/lib/utils'
 import {
   ChevronLeft, ChevronRight, User, Settings, Shield,
@@ -38,7 +45,6 @@ const DEPLOY_STAGES = [
   'Creating ENS identity…',
   'Committing policy hash…',
   'Registering agent fleet…',
-  'Approving USDC on Arc…',
   'Vault live!',
 ]
 
@@ -80,19 +86,22 @@ export default function CreateVaultPage() {
   }, [step, walletAddress])
 
   async function handleApprove() {
-    if (!usdcFunding) return
+    if (!usdcFunding || !wallets[0]) return
     setFundingLoading(true)
     setFundingTxHash('')
     setFundingExplorerUrl('')
     try {
-      const result = await approveVaultFunding({ amountUsdc: parseFloat(usdcFunding) })
-      if (result.success) {
-        setFundingTxHash(result.approveTxHash)
-        setFundingExplorerUrl(result.explorerUrl)
-        setOnChainBalance(result.balanceAfter)
-      }
-    } catch {
-      // silently fail — user can still proceed
+      // Client-side approve: user's Privy wallet signs the tx
+      const walletClient = await getPrivyArcWalletClient(wallets[0])
+      const publicClient = getArcPublicClient()
+      const amount = parseUnits(usdcFunding, 6)
+      const spender = (process.env.NEXT_PUBLIC_POLYAGENTS_CONTRACT_ADDRESS || process.env.POLYAGENTS_CONTRACT_ADDRESS) as `0x${string}`
+      const hash = await approveUsdcFromPrivy(walletClient, spender, amount)
+      await publicClient.waitForTransactionReceipt({ hash })
+      setFundingTxHash(hash)
+      setFundingExplorerUrl(`${ARC_EXPLORER}/tx/${hash}`)
+    } catch (err) {
+      console.error('[fund-vault] client-side approve failed:', err)
     } finally {
       setFundingLoading(false)
     }
@@ -158,20 +167,10 @@ export default function CreateVaultPage() {
       await new Promise(r => setTimeout(r, 400))
     }
 
-    // ── Phase 3: Approve USDC on Arc ──
-    setDeployStage(8) // "Approving USDC on Arc…"
-    try {
-      const arcResult = await approveVaultFunding({ amountUsdc: parseFloat(usdcFunding) || 100 })
-      if (arcResult.success) {
-        console.log('[deploy] Arc USDC approved:', arcResult.approveTxHash)
-      } else {
-        console.warn('[deploy] Arc approval failed (non-blocking):', arcResult.error)
-      }
-    } catch (arcErr) {
-      console.warn('[deploy] Arc approval failed (non-blocking):', arcErr)
-    }
+    // Note: USDC approval is now done by the user in Step 3 (Funding) via Privy wallet signing.
+    // No server-side approval needed here.
 
-    setDeployStage(9) // "Vault live!"
+    setDeployStage(8) // "Vault live!"
 
     const vault: Vault = {
       id,
@@ -303,6 +302,12 @@ export default function CreateVaultPage() {
               <h2 className="font-heading text-xl font-bold text-[#E1F5FE] mb-1">Strategy</h2>
               <p className="text-sm text-[#B0BEC5]">Configure your vault&apos;s trading parameters.</p>
             </div>
+            {walletAddress && (
+              <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] px-4 py-3">
+                <p className="text-[10px] text-[#B0BEC5] uppercase tracking-wider">Wallet</p>
+                <p className="text-xs font-mono text-[#E1F5FE] break-all">{walletAddress}</p>
+              </div>
+            )}
             <StrategyForm value={strategy} onChange={setStrategy} />
             {strategy.sellPrice <= strategy.bidPrice && (
               <p className="text-xs text-[#EF5350]">Sell price must be greater than bid price.</p>

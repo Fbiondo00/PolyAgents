@@ -473,6 +473,26 @@ export default function AgentPage() {
         </div>
       </div>
 
+      {/* ── Strategy Specification ── */}
+      <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <BookOpen className="h-4 w-4 text-[#00A8B5]" />
+          <p className="text-sm font-semibold text-[#E1F5FE]">Strategy</p>
+          <Badge className="text-[10px] bg-[#00A8B5]/20 text-[#00A8B5] border-[#00A8B5]/30">Locked</Badge>
+        </div>
+        <p className="text-xs text-[#B0BEC5] mb-2">This agent implements a single strategy:</p>
+        <div className="rounded-lg border border-[#00A8B5]/20 bg-[#081216] p-3 space-y-1.5 text-xs">
+          <p className="text-[#E1F5FE] font-semibold">5-Minute BTC Binary Market-Making</p>
+          <p className="text-[#B0BEC5]">Passive market-making on Polymarket &quot;Up or Down&quot; markets.</p>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] text-[#B0BEC5]">
+            <span>Entry: <span className="text-[#E1F5FE] font-mono">$0.01</span></span>
+            <span>Exit: <span className="text-[#E1F5FE] font-mono">$0.02</span></span>
+            <span>Sides: <span className="text-[#E1F5FE]">YES + NO</span></span>
+            <span>Spread: <span className="text-[#26A69A]">100%</span></span>
+          </div>
+        </div>
+      </div>
+
       {/* ── Engine Status ── */}
       {engineStatus && (
         <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">

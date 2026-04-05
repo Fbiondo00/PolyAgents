@@ -41,7 +41,7 @@ export async function checkFills(
   const state = getMarketState(vaultId)
   if (!run || !state) return 0
 
-  const adapter = getClobAdapter()
+  const adapter = await getClobAdapter()
   console.log(`[check-fills] checking fills`, { vaultId, mode: adapter.isLive ? "live" : "simulated" })
 
   // Build books from live data
@@ -71,7 +71,7 @@ export async function checkFills(
 }
 
 async function checkLiveFills(vaultId: string, runId: string): Promise<number> {
-  const adapter = getClobAdapter()
+  const adapter = await getClobAdapter()
   const allOrders = getOrders(vaultId)
   const state = getMarketState(vaultId)
   if (!state) return 0

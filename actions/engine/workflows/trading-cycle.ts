@@ -16,6 +16,7 @@ import { reconcile } from "@/actions/engine/steps/reconcile"
 import { logHedera } from "@/actions/engine/steps/log-hedera"
 import { updateEns } from "@/actions/engine/steps/update-ens"
 import { mirrorBetToArc } from "@/actions/engine/steps/mirror-arc"
+import { ensurePolygonLiquidity, repatriateProfitsToArc } from "@/actions/engine/steps/ensure-polygon-liquidity"
 import { getClobAdapter } from "@/lib/engine/adapters/polymarket-clob"
 import { getTopOfBook } from "@/lib/engine/adapters/polymarket-readonly"
 
@@ -48,7 +49,10 @@ export async function tradingCycleWorkflow(
   let decision: CycleResult["decision"]
   let arcMarketId: number | undefined
 
-  console.log(`[cycle] starting trading cycle`, { vaultId })
+  console.log(`[cycle] ═══════════════════════════════════════`)
+  console.log(`[cycle] VAULT `, { vaultId })
+  console.log(`[cycle] CONFIG`, { entryPrice: config.entryPrice, exitPrice: config.exitPrice, orderSize: config.orderSize, allowBothSides: config.allowBothSides, reconcileIntervalCycles: config.reconcileIntervalCycles })
+  console.log(`[cycle] ═══════════════════════════════════════`)
 
   try {
     // 1. Discover market
@@ -58,6 +62,9 @@ export async function tradingCycleWorkflow(
       saveRun(vaultId, { ...run, currentState: "DISCOVERING_MARKET", lastHeartbeatAt: Date.now() })
       return { success: false, status: "no_market", fills: 0, pnl: 0 }
     }
+
+    const toExpiry = market.endTs - Math.floor(Date.now() / 1000)
+    console.log(`[cycle] → BTC 5-min market`, { question: market.question, endTs: market.endTs, yesTokenId: market.yesTokenId, noTokenId: market.noTokenId, toExpiry: `${toExpiry}s` })
 
     // 2. AI analysis
     console.log(`[cycle] step 2: analyze`)
@@ -79,6 +86,17 @@ export async function tradingCycleWorkflow(
     // 4. Handle expiry (cancel stale orders)
     console.log(`[cycle] step 4: expiry`)
     await handleExpiry(vaultId, config)
+
+    // 4.5. Ensure Polygon liquidity (auto-bridge USDC from Arc if needed)
+    console.log(`[cycle] step 4.5: ensure-polygon-liquidity`)
+    try {
+      const liquidity = await ensurePolygonLiquidity(vaultId)
+      if (liquidity.bridged) {
+        console.log(`[cycle] bridged ${liquidity.bridgeAmount} USDC Arc→Polygon`)
+      }
+    } catch (bridgeErr) {
+      console.warn(`[cycle] bridge step failed (non-blocking):`, bridgeErr)
+    }
 
     // 5. Place bets (if AI approves or in manual mode)
     console.log(`[cycle] step 5: bet`)
@@ -115,10 +133,23 @@ export async function tradingCycleWorkflow(
     const pnl = state
       ? state.sides.YES.realizedPnl + state.sides.NO.realizedPnl
       : 0
+    console.log(`[cycle] cumulative`, { cycleNum, totalPnl: pnl.toFixed(4), totalFills })
+
+    // 10.5. Repatriate profits: Polygon → Arc (if positive PnL, non-blocking)
+    // Returns USDC to Arc for oracle payments and vault settlement.
+    // The Vercel cron also runs this, but we do it in-cycle for faster response.
+    console.log(`[cycle] step 10.5: repatriate-profits`)
+    if (pnl > 0 && cycleNum % config.reconcileIntervalCycles === 0) {
+      repatriateProfitsToArc(vaultId, pnl.toFixed(2)).then(r => {
+        if (r.bridged) {
+          console.log(`[cycle] repatriated $${r.bridgeAmount} Polygon→Arc`)
+        }
+      }).catch(() => {})
+    }
 
     // 11. Build activeMarket data for UI
     console.log(`[cycle] step 11: market-data`)
-    const adapter = getClobAdapter()
+    const adapter = await getClobAdapter()
     let activeMarket: ActiveMarketData | undefined
 
     try {

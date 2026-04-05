@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { readAgentStats } from '@/lib/ens/agent-stats'
 import { verifyPolicyIntegrity } from '@/lib/ens/policy-commitment'
 import { resolveAgentProfile } from '@/lib/ens/agent-identity'
+import { buildEnsName } from '@/lib/ens/subname'
 import { Copy, CheckCheck, ExternalLink, Shield, ShieldAlert, RefreshCw, Loader2, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -26,16 +27,19 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
 
+  // Use vault.ens.name if available, otherwise compute from vault ID
+  const ensName = vault.ens?.name || buildEnsName(vault.id)
+
   function loadENS() {
-    if (!vault.ens?.name) return
+    if (!ensName) return
 
     setLoading(true)
 
     Promise.all([
-      readAgentStats(vault.ens!.name),
-      resolveAgentProfile(vault.ens!.name),
+      readAgentStats(ensName),
+      resolveAgentProfile(ensName),
       verifyPolicyIntegrity(
-        vault.ens!.name,
+        ensName,
         vault.strategy,
         vault.name,
         vault.mode
@@ -54,12 +58,12 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
 
   useEffect(() => {
     loadENS()
-  }, [vault.ens?.name, vault.strategy, vault.name, vault.mode])
+  }, [ensName, vault.strategy, vault.name, vault.mode])
 
-  if (!vault.ens?.name) return null
+  if (!ensName) return null
 
   function copyEnsName() {
-    navigator.clipboard.writeText(vault.ens!.name).catch(() => {})
+    navigator.clipboard.writeText(ensName).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
@@ -89,7 +93,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
       <div className="p-4 space-y-4">
         {/* ENS Name */}
         <div className="flex items-center justify-between">
-          <span className="font-mono text-sm text-[#00A8B5]">{vault.ens.name}</span>
+          <span className="font-mono text-sm text-[#00A8B5]">{ensName}</span>
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -100,7 +104,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
               {copied ? <CheckCheck className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </Button>
             <a
-              href={`https://app.ens.domains/name/${vault.ens.name}`}
+              href={`https://sepolia.app.ens.domains/name/${ensName}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#B0BEC5] hover:text-[#00A8B5] transition-colors"

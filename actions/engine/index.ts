@@ -191,7 +191,7 @@ export async function fetchActiveMarket(vaultId: string): Promise<ActiveMarketDa
 
     console.log(`[engine] fetchActiveMarket market found`, { vaultId, question: market.question, conditionId: market.conditionId })
 
-    const adapter = getClobAdapter()
+    const adapter = await getClobAdapter()
     const now = Math.floor(Date.now() / 1000)
 
     const [yesBook, noBook] = await Promise.all([

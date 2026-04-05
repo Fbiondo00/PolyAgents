@@ -41,7 +41,7 @@ export async function sellCoverage(
   if (!run || !state?.market) return 0
 
   const risk = new RiskEngine(config)
-  const adapter = getClobAdapter()
+  const adapter = await getClobAdapter()
   const EPSILON = 1e-9
   let sellsPlaced = 0
 

@@ -24,7 +24,7 @@ import { POLYAGENTS_ABI, OUTCOME, type Outcome } from "./abi";
 // ── Chain definitions ──
 
 export const arcTestnet = defineChain({
-  id: 1120,
+  id: 5042002,
   name: "Arc Testnet",
   nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 6 },
   rpcUrls: {

@@ -264,15 +264,21 @@ function mapPolymarketStatus(s: string): ClobOrder["status"] {
 // ── Singleton factory ──
 
 let _adapter: ClobAdapter | null = null;
+let _initialized = false;
 
-export function getClobAdapter(): ClobAdapter {
+export async function getClobAdapter(): Promise<ClobAdapter> {
   if (!_adapter) {
     const live = process.env.POLYMARKET_LIVE === "true";
     _adapter = live ? new LiveClobAdapter() : new ReadOnlyClobAdapter();
+  }
+  if (!_initialized) {
+    await _adapter.initialize();
+    _initialized = true;
   }
   return _adapter;
 }
 
 export function resetClobAdapter(): void {
   _adapter = null;
+  _initialized = false;
 }

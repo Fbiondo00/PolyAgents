@@ -29,8 +29,8 @@ import type { Address } from "viem";
 // ── Config from env ──
 
 function getConfig() {
-  const contractAddress = process.env.POLYAGENTS_CONTRACT_ADDRESS as Address;
-  const usdcAddress = (process.env.ARC_USDC_ADDRESS || process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS) as Address;
+  const contractAddress = (process.env.NEXT_PUBLIC_POLYAGENTS_CONTRACT_ADDRESS || process.env.POLYAGENTS_CONTRACT_ADDRESS) as Address;
+  const usdcAddress = (process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS || process.env.ARC_USDC_ADDRESS) as Address;
   const privateKey = process.env.ARC_PRIVATE_KEY as `0x${string}`;
   const rpcUrl = process.env.ARC_TESTNET_RPC_URL;
 

@@ -61,7 +61,7 @@ export async function aiAnalysis(vaultId: string): Promise<TradeDecision> {
   }
 
   console.log(`[ai-analysis] calling analyzeMarket`, { vaultId })
-  const decision = analyzeMarket(context)
+  const decision = await analyzeMarket(context)
   console.log(`[ai-analysis] decision received`, { vaultId, shouldTrade: decision.shouldTrade, direction: decision.direction, confidence: decision.confidence })
   return decision
 }

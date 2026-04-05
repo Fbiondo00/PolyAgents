@@ -15,8 +15,8 @@ import {
 
 function getArcConfig() {
   const pk = process.env.ARC_PRIVATE_KEY as `0x${string}` | undefined
-  const contract = process.env.POLYAGENTS_CONTRACT_ADDRESS as Address | undefined
-  const usdc = process.env.ARC_USDC_ADDRESS as Address | undefined
+  const contract = (process.env.NEXT_PUBLIC_POLYAGENTS_CONTRACT_ADDRESS || process.env.POLYAGENTS_CONTRACT_ADDRESS) as Address | undefined
+  const usdc = (process.env.NEXT_PUBLIC_ARC_USDC_ADDRESS || process.env.ARC_USDC_ADDRESS) as Address | undefined
   const network = process.env.ARC_NETWORK ?? "local"
   const rpcUrl = process.env.ARC_TESTNET_RPC_URL
 

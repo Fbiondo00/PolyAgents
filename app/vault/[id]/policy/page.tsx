@@ -79,9 +79,7 @@ export default function PolicyPage() {
 
       <PolicyHashCard hash={hash} />
 
-      {vault.ens?.name && (
-        <ENSVerificationCard vault={vault} />
-      )}
+      <ENSVerificationCard vault={vault} />
 
       <Button
         onClick={handleSave}

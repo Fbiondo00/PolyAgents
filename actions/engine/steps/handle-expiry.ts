@@ -38,7 +38,7 @@ async function cancelSideOrders(
   intent: string,
   marketId?: string,
 ): Promise<void> {
-  const adapter = getClobAdapter()
+  const adapter = await getClobAdapter()
   const allOrders = getOrders(vaultId)
   let cancelCount = 0
   for (const o of Object.values(allOrders)) {

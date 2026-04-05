@@ -52,7 +52,7 @@ export async function placeBets(
   if (anyFilled && !config.allowBothSides) return 0
 
   const risk = new RiskEngine(config)
-  const adapter = getClobAdapter()
+  const adapter = await getClobAdapter()
   let placed = 0
 
   for (const side of ["YES", "NO"] as const) {

@@ -28,7 +28,9 @@
       "mcp__chrome2__click",
       "mcp__chrome2__fill",
       "mcp__web-search-prime__web_search_prime",
-      "WebSearch"
+      "WebSearch",
+      "Bash(node -e:*)",
+      "mcp__zai-mcp-server__extract_text_from_screenshot"
     ]
   }
 }

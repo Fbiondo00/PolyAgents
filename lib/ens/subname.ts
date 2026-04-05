@@ -3,12 +3,12 @@ import {
   ensWalletClient,
   ensPublicClient,
   ENS_REGISTRY,
-  ENS_PUBLIC_RESOLVER,
+  ENS_TEXT_RESOLVER,
   ENS_BASE_DOMAIN,
 } from "./client"
 
 // ── ABIs ──
-
+// New ABI (ENSIP-1): key as plain string — the standard used by ENS app & universal resolver
 const RESOLVER_ABI = [
   {
     name: "setText",
@@ -30,6 +30,13 @@ const RESOLVER_ABI = [
       { name: "key", type: "string" },
     ],
     outputs: [{ name: "", type: "string" }],
+  },
+  {
+    name: "supportsInterface",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "interfaceId", type: "bytes4" }],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const
 
@@ -119,7 +126,7 @@ export async function createVaultSubname(
     address: ENS_REGISTRY,
     abi: REGISTRY_ABI,
     functionName: "setResolver",
-    args: [fullNode, ENS_PUBLIC_RESOLVER],
+    args: [fullNode, ENS_TEXT_RESOLVER],
   })
   await ensPublicClient.waitForTransactionReceipt({ hash: resolverTxHash })
 
@@ -139,7 +146,7 @@ export async function readTextRecord(
   const node = namehash(ensName)
   try {
     const value = await ensPublicClient.readContract({
-      address: ENS_PUBLIC_RESOLVER,
+      address: ENS_TEXT_RESOLVER,
       abi: RESOLVER_ABI,
       functionName: "text",
       args: [node, key],
@@ -161,7 +168,7 @@ export async function setTextRecord(
 ): Promise<string> {
   const node = namehash(ensName)
   const txHash = await ensWalletClient.writeContract({
-    address: ENS_PUBLIC_RESOLVER,
+    address: ENS_TEXT_RESOLVER,
     abi: RESOLVER_ABI,
     functionName: "setText",
     args: [node, key, value],
