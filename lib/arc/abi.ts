@@ -1,10 +1,10 @@
-// Auto-generated from: forge inspect VaultPilotMarket abi --json --root contracts/
+// Auto-generated from: forge inspect PolyAgentsMarket abi --json --root contracts/
 // Regenerate after contract changes with:
-//   forge inspect VaultPilotMarket abi --root contracts/ --json > lib/arc/vaultpilot-abi.json
+//   forge inspect PolyAgentsMarket abi --root contracts/ --json > lib/arc/polyagents-abi.json
 
-import vaultPilotAbiJson from "./vaultpilot-abi.json";
+import polyagentsAbiJson from "./polyagents-abi.json";
 
-export const VAULTPILOT_ABI = vaultPilotAbiJson;
+export const POLYAGENTS_ABI = polyagentsAbiJson;
 
 export type Outcome = 0 | 1 | 2 | 3; // UNRESOLVED | YES | NO | VOIDED
 export const OUTCOME = {

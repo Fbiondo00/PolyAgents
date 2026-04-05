@@ -77,7 +77,7 @@ The trading strategy (documented in `docs/Polymarket-Strategy.md`) operates as a
 ### Sponsor Integration docs
 
 `docs/sponsors/` contains step-by-step implementation plans for each sponsor bounty:
-- **Arc** (`docs/sponsors/arc.md`) — Solidity `VaultPilotMarket` for binary prediction markets with USDC on Arc Testnet
+- **Arc** (`docs/sponsors/arc.md`) — Solidity `PolyAgentsMarket` for binary prediction markets with USDC on Arc Testnet
 - **Hedera** (`docs/sponsors/hedera.md`) — HTS token creation, HCS audit topics, HCS-14 agent identity, scheduled transactions, Mirror Node queries
 - **ENS** (`docs/sponsors/ens.md`) — Cryptographic commitment via ENS text records (`policy.commitment`) + live agent stats on vault subnames
 

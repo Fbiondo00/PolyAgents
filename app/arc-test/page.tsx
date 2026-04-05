@@ -1,29 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
+import type { PublicClient, WalletClient } from "viem";
 import {
-  fetchAllMarkets,
-  fetchMarketCount,
-  fetchOdds,
-  createPredictionMarket,
-  placeBetOnMarket,
-  resolvePredictionMarket,
-  claimMarketWinnings,
-} from "@/actions/arc/markets";
-
-interface Market {
-  marketId: number;
-  question: string;
-  category: string;
-  resolutionTime: string;
-  totalYes: string;
-  totalNo: string;
-  outcome: number;
-  resolved: boolean;
-}
+  getMarketCount,
+  getMarketFormatted,
+  createMarket,
+  placeBet,
+  resolveMarket as resolveMarketTx,
+  claimWinnings,
+  calculatePayout,
+  formatUsdc,
+  OUTCOME,
+  type MarketDataFormatted,
+} from "@/lib/arc/market-client";
+import { LocalWalletConnect, type LocalWalletState } from "@/components/local-wallet-connect";
 
 export default function ArcTestPage() {
-  const [markets, setMarkets] = useState<Market[]>([]);
+  const [wallet, setWallet] = useState<LocalWalletState | null>(null);
+  const [markets, setMarkets] = useState<MarketDataFormatted[]>([]);
   const [loading, setLoading] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [newQuestion, setNewQuestion] = useState("Will BTC close above $100k this week?");
@@ -34,33 +29,59 @@ export default function ArcTestPage() {
   const [resolveOutcome, setResolveOutcome] = useState<"YES" | "NO">("YES");
   const [claimId, setClaimId] = useState("1");
 
-  const addLog = (msg: string) => setLog((prev) => [msg, ...prev]);
+  const walletRef = useRef<LocalWalletState | null>(null);
+  walletRef.current = wallet;
 
-  const load = async () => {
+  const addLog = useCallback((msg: string) => setLog((prev) => [`${new Date().toLocaleTimeString()} ${msg}`, ...prev]), []);
+
+  const getClient = useCallback((): { wc: WalletClient; pc: PublicClient; contract: `0x${string}`; usdc: `0x${string}` } | null => {
+    const w = walletRef.current;
+    if (!w) return null;
+    return { wc: w.walletClient, pc: w.publicClient, contract: w.contractAddress as `0x${string}`, usdc: w.usdcAddress as `0x${string}` };
+  }, []);
+
+  const load = useCallback(async () => {
+    const c = getClient();
+    if (!c) return;
     setLoading(true);
     try {
-      const count = await fetchMarketCount();
+      const count = await getMarketCount(c.pc, c.contract);
       addLog(`Market count: ${count}`);
-      if (count === 0) {
+      if (count === 0n) {
         setMarkets([]);
         return;
       }
-      const data = await fetchAllMarkets();
-      setMarkets(data as unknown as Market[]);
+      const data: MarketDataFormatted[] = [];
+      for (let i = 1; i <= Number(count); i++) {
+        const m = await getMarketFormatted(c.pc, c.contract, BigInt(i));
+        data.push(m);
+      }
+      setMarkets(data);
       addLog(`Loaded ${data.length} markets`);
     } catch (err: unknown) {
       addLog(`ERROR: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [getClient, addLog]);
 
-  useEffect(() => { load(); }, []);
+  const handleConnect = useCallback((state: LocalWalletState) => {
+    setWallet(state);
+    addLog(`Connected: ${state.address}`);
+  }, [addLog]);
+
+  const handleDisconnect = useCallback(() => {
+    setWallet(null);
+    setMarkets([]);
+    addLog("Disconnected");
+  }, [addLog]);
 
   const handleCreate = async () => {
+    const c = getClient();
+    if (!c) return;
     setLoading(true);
     try {
-      const res = await createPredictionMarket({
+      const res = await createMarket(c.wc, c.pc, c.contract, {
         question: newQuestion,
         category: "crypto",
         resolutionTime: new Date(Date.now() + 7 * 86400000),
@@ -77,14 +98,16 @@ export default function ArcTestPage() {
   };
 
   const handleBet = async () => {
+    const c = getClient();
+    if (!c) return;
     setLoading(true);
     try {
-      const res = await placeBetOnMarket({
-        marketId: Number(betMarketId),
+      const txHash = await placeBet(c.wc, c.pc, c.contract, c.usdc, {
+        marketId: BigInt(betMarketId),
         isYes: betSide === "YES",
         amountUsdc: Number(betAmount),
       });
-      addLog(`Bet ${betSide} ${betAmount} USDC on #${betMarketId} — tx: ${res.txHash.slice(0, 18)}...`);
+      addLog(`Bet ${betSide} ${betAmount} USDC on #${betMarketId} — tx: ${txHash.slice(0, 18)}...`);
       await load();
     } catch (err: unknown) {
       addLog(`ERROR: ${(err as Error).message}`);
@@ -94,13 +117,16 @@ export default function ArcTestPage() {
   };
 
   const handleResolve = async () => {
+    const c = getClient();
+    if (!c) return;
     setLoading(true);
     try {
-      const res = await resolvePredictionMarket({
-        marketId: Number(resolveId),
-        outcome: resolveOutcome,
-      });
-      addLog(`Resolved #${resolveId} as ${resolveOutcome} — tx: ${res.txHash.slice(0, 18)}...`);
+      const txHash = await resolveMarketTx(
+        c.wc, c.pc, c.contract,
+        BigInt(resolveId),
+        resolveOutcome === "YES" ? OUTCOME.YES : OUTCOME.NO,
+      );
+      addLog(`Resolved #${resolveId} as ${resolveOutcome} — tx: ${txHash.slice(0, 18)}...`);
       await load();
     } catch (err: unknown) {
       addLog(`ERROR: ${(err as Error).message}`);
@@ -110,10 +136,13 @@ export default function ArcTestPage() {
   };
 
   const handleClaim = async () => {
+    const c = getClient();
+    if (!c) return;
     setLoading(true);
     try {
-      const res = await claimMarketWinnings(Number(claimId));
-      addLog(`Claimed ${res.amount} USDC from #${claimId} — tx: ${res.txHash.slice(0, 18)}...`);
+      const payoutBefore = await calculatePayout(c.pc, c.contract, BigInt(claimId), wallet!.address as `0x${string}`);
+      const txHash = await claimWinnings(c.wc, c.pc, c.contract, BigInt(claimId));
+      addLog(`Claimed ${formatUsdc(payoutBefore)} USDC from #${claimId} — tx: ${txHash.slice(0, 18)}...`);
       await load();
     } catch (err: unknown) {
       addLog(`ERROR: ${(err as Error).message}`);
@@ -128,12 +157,30 @@ export default function ArcTestPage() {
   return (
     <div className="min-h-screen p-6" style={{ backgroundColor: "#081216", color: "#E1F5FE" }}>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold mb-2" style={{ fontFamily: "Sora, sans-serif" }}>
-          Arc Test Panel
-        </h1>
-        <p className="text-sm mb-6" style={{ color: "#B0BEC5" }}>
-          Tests VaultPilotMarket against local Anvil (port 8545). Make sure Anvil is running and DeployLocal has been executed.
-        </p>
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <div>
+            <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: "Sora, sans-serif" }}>
+              Arc Test Panel
+            </h1>
+            <p className="text-sm" style={{ color: "#B0BEC5" }}>
+              PolyAgentsMarket on local Anvil (port 8545). Select a wallet to sign transactions.
+            </p>
+          </div>
+          <LocalWalletConnect onConnect={handleConnect} onDisconnect={handleDisconnect} />
+        </div>
+
+        {/* Not connected banner */}
+        {!wallet && (
+          <div className="mb-6 rounded-lg p-4 text-center" style={{ backgroundColor: "#0E1B27", border: "1px solid #1A3C50" }}>
+            <p className="text-sm" style={{ color: "#B0BEC5" }}>
+              Connect a local wallet above to interact with the contract.
+            </p>
+            <p className="text-xs mt-1" style={{ color: "#B0BEC5" }}>
+              Contract: <code style={{ color: "#4DD0E1" }}>0x9fE46...fa6e0</code> &middot; USDC: <code style={{ color: "#4DD0E1" }}>0x5FbD...aa3</code>
+            </p>
+          </div>
+        )}
 
         {/* Markets table */}
         <div className="mb-6 rounded-lg p-4" style={{ backgroundColor: "#0E1B27", border: "1px solid #1A3C50" }}>
@@ -141,8 +188,8 @@ export default function ArcTestPage() {
             <h2 className="text-lg font-semibold">Markets</h2>
             <button
               onClick={load}
-              disabled={loading}
-              className="px-3 py-1.5 rounded text-sm font-medium"
+              disabled={loading || !wallet}
+              className="px-3 py-1.5 rounded text-sm font-medium disabled:opacity-40"
               style={{ backgroundColor: "#1A3C50", color: "#4DD0E1" }}
             >
               Refresh
@@ -219,8 +266,8 @@ export default function ArcTestPage() {
             />
             <button
               onClick={handleCreate}
-              disabled={loading}
-              className="w-full py-2 rounded text-sm font-medium"
+              disabled={loading || !wallet}
+              className="w-full py-2 rounded text-sm font-medium disabled:opacity-40"
               style={{ backgroundColor: "#00A8B5", color: "#081216" }}
             >
               Create Market
@@ -257,8 +304,8 @@ export default function ArcTestPage() {
             </div>
             <button
               onClick={handleBet}
-              disabled={loading}
-              className="w-full py-2 rounded text-sm font-medium"
+              disabled={loading || !wallet}
+              className="w-full py-2 rounded text-sm font-medium disabled:opacity-40"
               style={{ backgroundColor: "#00A8B5", color: "#081216" }}
             >
               Place Bet
@@ -288,8 +335,8 @@ export default function ArcTestPage() {
             </div>
             <button
               onClick={handleResolve}
-              disabled={loading}
-              className="w-full py-2 rounded text-sm font-medium"
+              disabled={loading || !wallet}
+              className="w-full py-2 rounded text-sm font-medium disabled:opacity-40"
               style={{ backgroundColor: "#FF8F00", color: "#081216" }}
             >
               Resolve
@@ -308,8 +355,8 @@ export default function ArcTestPage() {
             />
             <button
               onClick={handleClaim}
-              disabled={loading}
-              className="w-full py-2 rounded text-sm font-medium"
+              disabled={loading || !wallet}
+              className="w-full py-2 rounded text-sm font-medium disabled:opacity-40"
               style={{ backgroundColor: "#26A69A", color: "#081216" }}
             >
               Claim
@@ -321,8 +368,8 @@ export default function ArcTestPage() {
         <div className="rounded-lg p-4" style={{ backgroundColor: "#0E1B27", border: "1px solid #1A3C50" }}>
           <h3 className="text-sm font-semibold mb-2" style={{ color: "#B0BEC5" }}>Log</h3>
           <div className="font-mono text-xs space-y-1 max-h-48 overflow-y-auto" style={{ color: "#B0BEC5" }}>
-            {log.length === 0 ? <p>No actions yet.</p> : log.map((l, i) => (
-              <p key={i} className={l.startsWith("ERROR") ? "text-red-400" : ""}>{l}</p>
+            {log.length === 0 ? <p>No actions yet. Connect a wallet and create a market.</p> : log.map((l, i) => (
+              <p key={i} className={l.includes("ERROR") ? "text-red-400" : ""}>{l}</p>
             ))}
           </div>
         </div>

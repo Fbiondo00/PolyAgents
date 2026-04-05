@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { getVaultById } from '@/lib/store'
 import { Vault } from '@/types'
+import { getEngineRun, getMarketState } from '@/lib/engine/repositories'
+import { computeRunPnL } from '@/lib/engine/pnl'
 import { CycleButton } from '@/components/cycle-button'
 import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { InventoryCard } from '@/components/inventory-card'
@@ -12,7 +14,8 @@ import { HCSFeed } from '@/components/hcs-feed'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { TrendingUp, ChevronRight, RefreshCw, Zap } from 'lucide-react'
+import { TrendingUp, ChevronRight, RefreshCw, Zap, Cpu } from 'lucide-react'
+import type { PnlSnapshot } from '@/lib/engine/types'
 
 function KpiCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
   return (
@@ -43,11 +46,20 @@ export default function VaultDashboardPage() {
   const params = useParams<{ id: string }>()
   const [vault, setVault] = useState<Vault | null>(null)
   const [loading, setLoading] = useState(true)
+  const [enginePnl, setEnginePnl] = useState<PnlSnapshot | null>(null)
+  const [engineState, setEngineState] = useState<string | null>(null)
 
   const reload = useCallback(() => {
     const v = getVaultById(params.id)
     setVault(v)
     setLoading(false)
+    // Check engine state
+    const run = getEngineRun(params.id)
+    if (run) {
+      setEngineState(run.currentState)
+      const pnl = computeRunPnL(params.id)
+      setEnginePnl(pnl)
+    }
   }, [params.id])
 
   useEffect(() => {
@@ -122,6 +134,50 @@ export default function VaultDashboardPage() {
           sub={`${vault.funding.hbar.toFixed(3)} HBAR`}
         />
       </div>
+
+      {/* Engine PnL panel — shown when engine has run */}
+      {enginePnl && (
+        <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Cpu className="h-4 w-4 text-[#00A8B5]" />
+              <p className="text-sm font-semibold text-[#E1F5FE]">Engine PnL</p>
+              {engineState && (
+                <Badge className="text-[10px] bg-[#00A8B5]/20 text-[#00A8B5] border-[#00A8B5]/30">
+                  {engineState}
+                </Badge>
+              )}
+            </div>
+            <span className={cn(
+              'font-mono text-sm font-bold',
+              enginePnl.totalPnl >= 0 ? 'text-[#26A69A]' : 'text-[#EF5350]'
+            )}>
+              {enginePnl.totalPnl >= 0 ? '+' : ''}{enginePnl.totalPnl.toFixed(3)} USDC
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-xs">
+            <div>
+              <span className="text-[#B0BEC5]">Realized </span>
+              <span className="font-mono text-[#E1F5FE]">{enginePnl.totalRealizedPnl.toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="text-[#B0BEC5]">Unrealized </span>
+              <span className={cn(
+                'font-mono',
+                enginePnl.totalUnrealizedPnl >= 0 ? 'text-[#26A69A]' : 'text-[#EF5350]'
+              )}>{enginePnl.totalUnrealizedPnl.toFixed(3)}</span>
+            </div>
+            <div>
+              <span className="text-[#B0BEC5]">Cycles </span>
+              <span className="font-mono text-[#E1F5FE]">{enginePnl.totalCompletedCycles}</span>
+            </div>
+            <div>
+              <span className="text-[#B0BEC5]">Inventory </span>
+              <span className="font-mono text-[#E1F5FE]">{enginePnl.totalInventoryCost.toFixed(3)}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Middle row */}
       <div className="grid gap-4 md:grid-cols-2">

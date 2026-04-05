@@ -17,6 +17,9 @@ node_modules
 .DS_Store
 tsconfig.tsbuildinfo
 
+# Server-side vault registry (runtime data)
+.vault-registry.json
+
 # Foundry
 contracts/out/
 contracts/cache/

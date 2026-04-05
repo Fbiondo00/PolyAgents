@@ -26,7 +26,7 @@
 
 - [ ] Register Hedera testnet account at `portal.hedera.com` -- validate: Operator ID + Key received
 - [ ] Fund Hedera account via faucet (>=100 HBAR) -- validate: Balance query returns hbars
-- [ ] Register `vaultpilot.eth` on ENS (or confirm Sepolia ENS) -- validate: Name resolves
+- [ ] Register `polyagents.eth` on ENS (or confirm Sepolia ENS) -- validate: Name resolves
 - [ ] Fund Sepolia wallet with >=0.1 ETH for ENS writes -- validate: Balance > 0
 - [ ] Verify `@hashgraph/sdk` works in isolated script -- validate: Prints balance
 - [ ] Verify viem can read ENS text record on Sepolia -- validate: `getText()` returns value
@@ -62,7 +62,7 @@ After checkpoint, both devs split to their branches.
 | T+00:45 | -- | HCS audit topic + logging |
 | T+00:50 | Wire wallet address into vault creation | -- |
 | T+01:00 | Foundry init + install OpenZeppelin | Agent micropayment (0.001 HBAR per LLM call) |
-| T+01:10 | Write `VaultPilotMarket.sol` | -- |
+| T+01:10 | Write `PolyAgentsMarket.sol` | -- |
 | T+01:15 | -- | HCS-14 agent identity registration |
 | T+01:35 | -- | Scheduled transaction |
 | T+01:55 | Write deploy script | -- |
@@ -353,7 +353,7 @@ Files where both devs make changes -- coordinate at checkpoints:
 
 ### ENS -- Most Creative ($2,500)
 
-- [ ] Vault subname created (`{vaultId}.vaultpilot.eth`)
+- [ ] Vault subname created (`{vaultId}.polyagents.eth`)
 - [ ] Policy hash committed as `policy.commitment` text record
 - [ ] Agent stats updatable as text records (5 keys)
 - [ ] Verification UI shows on-chain vs local hash match

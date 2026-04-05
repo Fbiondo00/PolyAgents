@@ -2,7 +2,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         VaultPilot UI                           │
+│                         PolyAgents UI                           │
 │                      (Next.js 16 + React 19)                    │
 │                                                                 │
 │  ┌──────────┐   ┌────────────────┐   ┌──────────────────────┐ │
@@ -22,9 +22,9 @@
 │  │  Sepolia    │  │                                          │  │
 │  │             │  │  ┌──────────────┐  ┌──────────────────┐  │  │
 │  │ vault.      │  │  │  Arc Testnet │  │  Hedera Testnet  │  │  │
-│  │ vaultpilot  │  │  │  (EVM L1)    │  │                  │  │  │
+│  │ polyagents  │  │  │  (EVM L1)    │  │                  │  │  │
 │  │ .eth        │  │  │              │  │  ┌────────────┐  │  │  │
-│  │             │  │  │  VaultPilot  │  │  │ HTS Token  │  │  │  │
+│  │             │  │  │  PolyAgents  │  │  │ HTS Token  │  │  │  │
 │  │ text:       │  │  │  Market      │  │  │ Gate       │  │  │  │
 │  │  policy.    │  │  │  (USDC)      │  │  ├────────────┤  │  │  │
 │  │  commitment │  │  │              │  │  │ HCS Audit  │  │  │  │
@@ -52,7 +52,7 @@
 │                                                                 │
 │  Smart Contracts:                                               │
 │  ┌─────────────────────────────────────────────────────┐       │
-│  │  VaultPilotMarket.sol (Arc Testnet)                  │       │
+│  │  PolyAgentsMarket.sol (Arc Testnet)                  │       │
 │  │  - Ownable + Pausable + ReentrancyGuard             │       │
 │  │  - createMarket() — authorized agents only           │       │
 │  │  - placeBet() — USDC in, shares out                  │       │
@@ -62,7 +62,7 @@
 │  └─────────────────────────────────────────────────────┘       │
 │                                                                 │
 │  Key Files:                                                     │
-│  contracts/src/VaultPilotMarket.sol    — Solidity contract      │
+│  contracts/src/PolyAgentsMarket.sol    — Solidity contract      │
 │  contracts/script/DeployLocal.s.sol     — Local deploy          │
 │  contracts/script/Deploy.s.sol          — Arc Testnet deploy    │
 │  lib/arc/abi.ts                        — Contract ABI          │
@@ -76,6 +76,6 @@
 
 | Chain | Role | Gas Token | Key Features |
 |-------|------|-----------|--------------|
-| **Arc** (EVM L1) | Prediction markets | USDC | `VaultPilotMarket` contract, 0.5% protocol fee |
+| **Arc** (EVM L1) | Prediction markets | USDC | `PolyAgentsMarket` contract, 0.5% protocol fee |
 | **Hedera** | Audit + Identity | HBAR | HCS logging, HTS token gate, HCS-14 agent ID |
 | **ENS** (Sepolia) | Policy verification | ETH | Strategy hash commitment on subnames |

@@ -8,11 +8,11 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
- * @title VaultPilotMarket
+ * @title PolyAgentsMarket
  * @notice Binary prediction market native to USDC on Arc
- * @dev AI agent (VaultPilot) creates and manages markets. Users place bets on YES/NO outcomes.
+ * @dev AI agent (PolyAgents) creates and manages markets. Users place bets on YES/NO outcomes.
  */
-contract VaultPilotMarket is Ownable, Pausable, ReentrancyGuard {
+contract PolyAgentsMarket is Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable usdc;

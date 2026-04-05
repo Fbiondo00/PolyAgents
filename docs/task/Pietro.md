@@ -36,7 +36,7 @@
 | T+00:30 | Replace `PrivyConnectMock` with real `ConnectButton` | `components/privy-connect-wrapper.tsx`, `app/vault/create/page.tsx` | Email login --> wallet created |
 | T+00:50 | Wire wallet address into vault creation | `app/vault/create/page.tsx` | Vault stores real wallet address |
 | T+01:00 | Foundry init: `mkdir contracts && cd contracts && forge init --no-git`, install OZ | `contracts/`, `contracts/foundry.toml` | `forge build` succeeds |
-| T+01:10 | Write `VaultPilotMarket.sol` | `contracts/src/VaultPilotMarket.sol` | `forge build` compiles |
+| T+01:10 | Write `PolyAgentsMarket.sol` | `contracts/src/PolyAgentsMarket.sol` | `forge build` compiles |
 | T+01:55 | Write deploy script | `contracts/script/Deploy.s.sol` | Dry-run succeeds |
 | T+02:05 | Deploy to Arc Testnet | On-chain | Contract on `explorer.testnet.arc.network` |
 | T+02:15 | Generate ABI + create viem market client | `lib/arc/abi.ts`, `lib/arc/market-client.ts` | Imports resolve, TypeScript compiles |

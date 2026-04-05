@@ -6,6 +6,7 @@ import { getAuditLogs, getTokenInfo } from '@/lib/hedera/mirror-node'
 import { setActiveTopic, logToHCS } from '@/lib/hedera/hcs-logger'
 import { payForAgentCycle } from '@/lib/hedera/agent-payment'
 import { scheduleVaultOperation, getScheduleStatus } from '@/lib/hedera/scheduler'
+import { registerVault } from '@/lib/server/vault-registry'
 import type {
   AuditEventType,
   HCSLogPayload,
@@ -99,6 +100,12 @@ export async function initVault(config: {
       vaultName: config.vaultName,
       policyHash: config.policyHash,
       initialShares: config.initialShares ?? 1000,
+    })
+
+    // Persist hedera context to server-side registry (used by proxy.ts)
+    registerVault(config.vaultId, {
+      tokenId: context.tokenId,
+      treasuryAccountId: context.treasuryAccountId,
     })
 
     return { success: true, context }

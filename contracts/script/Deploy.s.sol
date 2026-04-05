@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import "forge-std/Script.sol";
-import "../src/VaultPilotMarket.sol";
+import "../src/PolyAgentsMarket.sol";
 
 contract DeployScript is Script {
     // USDC address on Arc Testnet — verify at docs.arc.network
@@ -13,9 +13,9 @@ contract DeployScript is Script {
 
         vm.startBroadcast(deployerKey);
 
-        VaultPilotMarket market = new VaultPilotMarket(ARC_TESTNET_USDC);
+        PolyAgentsMarket market = new PolyAgentsMarket(ARC_TESTNET_USDC);
 
-        console.log("VaultPilotMarket deployed at:", address(market));
+        console.log("PolyAgentsMarket deployed at:", address(market));
         console.log("Explorer: https://explorer.testnet.arc.network/address/", address(market));
 
         vm.stopBroadcast();

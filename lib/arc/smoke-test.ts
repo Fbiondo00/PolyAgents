@@ -1,5 +1,5 @@
 /**
- * Arc Smoke Test — validates the full VaultPilotMarket lifecycle locally.
+ * Arc Smoke Test — validates the full PolyAgentsMarket lifecycle locally.
  *
  * Run with:  npx tsx lib/arc/smoke-test.ts
  *

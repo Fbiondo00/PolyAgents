@@ -13,6 +13,8 @@ export interface HederaContext {
   agentHashscan: string
   scheduleId: string
   scheduleHashscan: string
+  treasuryAccountId: string
+  treasuryHashscan: string
 }
 
 // ── HTS Token ──
