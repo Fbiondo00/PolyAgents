@@ -1,6 +1,3 @@
-import { readFileSync, writeFileSync } from 'fs'
-import { join } from 'path'
-
 import type {
   EngineRun,
   MarketState,
@@ -20,28 +17,24 @@ interface EngineStore {
   cycleCounts: Record<string, number>
 }
 
-const STORE_PATH = join(process.cwd(), '.engine-store.json')
+// In-memory store — works on Vercel (read-only filesystem) and locally
+let store: EngineStore = {
+  runs: {},
+  marketStates: {},
+  orders: {},
+  audits: {},
+  configs: {},
+  cycleCounts: {},
+}
 
 // ── Read / write ──
 
 function readStore(): EngineStore {
-  try {
-    const raw = readFileSync(STORE_PATH, 'utf-8')
-    return JSON.parse(raw) as EngineStore
-  } catch {
-    return {
-      runs: {},
-      marketStates: {},
-      orders: {},
-      audits: {},
-      configs: {},
-      cycleCounts: {},
-    }
-  }
+  return store
 }
 
 function writeStore(data: EngineStore): void {
-  writeFileSync(STORE_PATH, JSON.stringify(data, null, 2), 'utf-8')
+  store = data
 }
 
 // ── EngineRun ──
