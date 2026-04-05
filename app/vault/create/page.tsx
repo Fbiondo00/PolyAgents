@@ -515,7 +515,7 @@ export default function CreateVaultPage() {
                 <p className="font-heading font-bold text-[#E1F5FE]">Vault Deployed!</p>
                 {buildEnsName(newVaultId) && (
                   <a
-                    href={`https://app.ens.domains/name/${buildEnsName(newVaultId)}`}
+                    href={`https://app.ens.domains/${buildEnsName(newVaultId)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 mx-auto text-sm text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"

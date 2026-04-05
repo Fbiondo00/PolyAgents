@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { readAgentStats } from '@/lib/ens/agent-stats'
 import { verifyPolicyIntegrity } from '@/lib/ens/policy-commitment'
 import { resolveAgentProfile } from '@/lib/ens/agent-identity'
@@ -25,15 +25,19 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
     onChainHash: string | null
   } | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const loadingRef = useRef(false)
 
   // Use vault.ens.name if available, otherwise compute from vault ID
   const ensName = vault.ens?.name || buildEnsName(vault.id)
 
-  function loadENS() {
-    if (!ensName) return
+  const loadENS = useCallback(() => {
+    if (!ensName || loadingRef.current) return
 
+    loadingRef.current = true
     setLoading(true)
+    setError(null)
 
     Promise.all([
       readAgentStats(ensName),
@@ -49,16 +53,26 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
         setEnsData(stats)
         setProfile(prof)
         setVerification(verify)
+        setError(null)
       })
       .catch((err) => {
         console.error('ENS read failed:', err)
+        setEnsData({})
+        setProfile({})
+        setVerification(null)
+        setError(err instanceof Error ? err.message : 'Failed to resolve ENS records')
       })
-      .finally(() => setLoading(false))
-  }
+      .finally(() => {
+        setLoading(false)
+        loadingRef.current = false
+      })
+  }, [ensName, vault.strategy, vault.name, vault.mode])
 
+  // Only trigger on mount + ensName change (not on object reference changes)
   useEffect(() => {
     loadENS()
-  }, [ensName, vault.strategy, vault.name, vault.mode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ensName])
 
   if (!ensName) return null
 
@@ -104,7 +118,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
               {copied ? <CheckCheck className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </Button>
             <a
-              href={`https://sepolia.app.ens.domains/name/${ensName}`}
+              href={`https://sepolia.app.ens.domains/${ensName}`}
               target="_blank"
               rel="noopener noreferrer"
               className="text-[#B0BEC5] hover:text-[#00A8B5] transition-colors"
@@ -122,8 +136,50 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
           </div>
         )}
 
+        {/* Error state */}
+        {!loading && error && (
+          <div className="rounded-lg border border-[#EF5350]/30 bg-[#EF5350]/5 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-[#EF5350]" />
+              <p className="text-xs text-[#EF5350] font-semibold">ENS Resolution Failed</p>
+            </div>
+            <p className="text-xs text-[#B0BEC5]">{error}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-[#00A8B5] hover:text-[#4DD0E1] gap-1 h-7 px-2"
+              onClick={loadENS}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {/* Empty state — subname not yet initialized on-chain */}
+        {!loading && !error && Object.keys(ensData).length === 0 && !verification && (
+          <div className="rounded-lg border border-[#1A3C50] bg-[#081216] p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-[#B0BEC5]" />
+              <p className="text-xs text-[#B0BEC5] font-semibold">No ENS Records Found</p>
+            </div>
+            <p className="text-xs text-[#B0BEC5]">
+              This vault's ENS subname has not been initialized yet. Records will appear after the first deployment.
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-[#00A8B5] hover:text-[#4DD0E1] gap-1 h-7 px-2"
+              onClick={loadENS}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </div>
+        )}
+
         {/* Policy Verification */}
-        {!loading && verification && (
+        {!loading && !error && verification && (
           <div className="rounded-lg border border-[#1A3C50] bg-[#081216] p-3 space-y-2">
             <div className="flex items-center gap-2">
               {verification.match ? (
@@ -160,7 +216,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
         )}
 
         {/* Live Agent Stats */}
-        {!loading && Object.keys(ensData).length > 0 && (
+        {!loading && !error && Object.keys(ensData).length > 0 && (
           <div className="space-y-2">
             <p className="text-xs text-[#B0BEC5] font-semibold">Live Stats (on-chain)</p>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
@@ -222,7 +278,7 @@ export function ENSVerificationCard({ vault, className }: ENSVerificationCardPro
         )}
 
         {/* Agent Profile (ENSIP-25) */}
-        {!loading && profile['ai.agent.hcs14-uaid'] && (
+        {!loading && !error && profile['ai.agent.hcs14-uaid'] && (
           <div className="rounded-lg border border-[#1A3C50] bg-[#081216] p-3 space-y-2">
             <div className="flex items-center gap-2">
               <Shield className="h-3 w-3 text-[#00A8B5]" />

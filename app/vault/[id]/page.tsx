@@ -118,7 +118,7 @@ export default function VaultDashboardPage() {
           <h1 className="font-heading text-xl font-bold text-[#E1F5FE]">{vault.name}</h1>
           <div className="flex items-center gap-2 mt-1">
             <a
-              href={`https://app.ens.domains/name/${buildEnsName(vault.id)}`}
+              href={`https://app.ens.domains/${buildEnsName(vault.id)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-xs text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
