@@ -14,45 +14,45 @@ graph TB
     UI -->|run_cycle| ServerActions
     UI -->|toggle_agent| ServerActions
 
-    ServerActions -->|init_vault| Hedera
-    ServerActions -->|commit_policy| ENS
-    ServerActions -->|create_market| Arc
-    ServerActions -->|analyze| VercelAI
+    ServerActions -->|init_vault| HederaNet
+    ServerActions -->|commit_policy| ENSNet
+    ServerActions -->|create_market| ArcNet
+    ServerActions -->|analyze| AIGateway
 
-    Engine -->|discover| Polymarket
-    Engine -->|fill_sim| FillSim
-    Engine -->|place_bets| Arc
-    Engine -->|log_audit| Hedera
-    Engine -->|update_stats| ENS
+    Engine -->|discover| PolymarketAPI
+    Engine -->|fill_sim| FillSimEngine
+    Engine -->|place_bets| ArcNet
+    Engine -->|log_audit| HederaNet
+    Engine -->|update_stats| ENSNet
 
-    subgraph Arc["Arc Testnet (EVM L1)"]
-    subgraph Hedera["Hedera Testnet"]
-    subgraph ENS["ENS (Sepolia)"]
-    subgraph VercelAI["Vercel AI Gateway"]
-    subgraph Polymarket["Polymarket API"]
-    subgraph FillSim["Fill Simulator"]
+    subgraph ArcNet["Arc Testnet (EVM L1)"]
+    subgraph HederaNet["Hedera Testnet"]
+    subgraph ENSNet["ENS (Sepolia)"]
+    subgraph AIGateway["Vercel AI Gateway"]
+    subgraph PolymarketAPI["Polymarket API"]
+    subgraph FillSimEngine["Fill Simulator"]
 
-    Arc -->|USDC Markets| PolyAgentsMarket.sol
-    Arc -->|create_market| PolyAgentsMarket.sol
-    Arc -->|place_bet| PolyAgentsMarket.sol
-    Arc -->|resolve| PolyAgentsMarket.sol
+    ArcNet -->|USDC Markets| PolyAgentsMarket.sol
+    ArcNet -->|create_market| PolyAgentsMarket.sol
+    ArcNet -->|place_bet| PolyAgentsMarket.sol
+    ArcNet -->|resolve| PolyAgentsMarket.sol
 
-    Hedera -->|HTS| "Token Gate"
-    Hedera -->|HCS| "Audit Log"
-    Hedera -->|HCS14| "Agent Identity"
-    Hedera -->|HBAR| Micropayments
-    Hedera -->|Scheduled| TX
+    HederaNet -->|HTS| "Token Gate"
+    HederaNet -->|HCS| "Audit Log"
+    HederaNet -->|HCS14| "Agent Identity"
+    HederaNet -->|HBAR| Micropayments
+    HederaNet -->|Scheduled| TX
 
-    ENS -->|policy_hash| "policy.commitment"
-    ENS -->|agent_stats| "agent.* text records"
-    ENS -->|profile| "ENSIP-25 identity"
+    ENSNet -->|policy_hash| "policy.commitment"
+    ENSNet -->|agent_stats| "agent.* text records"
+    ENSNet -->|profile| "ENSIP-25 identity"
 
-    VercelAI -->|trade_decision| "Gemini 2.0 Flash Lite"
+    AIGateway -->|trade_decision| "Gemini 2.0 Flash Lite"
 
-    Polymarket -->|market_data| "Gamma API"
-    Polymarket -->|order_book| "CLOB API"
+    PolymarketAPI -->|market_data| "Gamma API"
+    PolymarketAPI -->|order_book| "CLOB API"
 
-    FillSim -->|deterministic| "Real order book data"
+    FillSimEngine -->|deterministic| "Real order book data"
 ```
 
 ## Data Flow
