@@ -3,9 +3,17 @@ import {
   ensWalletClient,
   ensPublicClient,
   ENS_REGISTRY,
-  ENS_TEXT_RESOLVER,
+  ENS_PUBLIC_RESOLVER,
   ENS_BASE_DOMAIN,
 } from "./client"
+
+// Wallet client is null when NEXT_PUBLIC_ENS_OWNER_PRIVATE_KEY is not set.
+// These functions are only called at runtime (not at module load), so we
+// throw a clear error instead of crashing on import.
+function getWallet() {
+  if (!ensWalletClient) throw new Error("ENS wallet not configured — set NEXT_PUBLIC_ENS_OWNER_PRIVATE_KEY")
+  return ensWalletClient
+}
 
 // ── ABIs ──
 // New ABI (ENSIP-1): key as plain string — the standard used by ENS app & universal resolver
@@ -108,27 +116,49 @@ export async function createVaultSubname(
   const parentNode = namehash(ENS_BASE_DOMAIN)
   const fullNode = namehash(ensName)
 
+  console.log(`[ens:subname] creating subname`, {
+    vaultId,
+    label,
+    ensName,
+    baseDomain: ENS_BASE_DOMAIN,
+    parentNode,
+    fullNode,
+    owner: getWallet().account.address,
+    registry: ENS_REGISTRY,
+    resolver: ENS_PUBLIC_RESOLVER,
+  })
+
   // 1. Create subdomain (setSubnodeOwner)
-  const createTxHash = await ensWalletClient.writeContract({
+  console.log(`[ens:subname] step 1: setSubnodeOwner`)
+  const createTxHash = await getWallet().writeContract({
     address: ENS_REGISTRY,
     abi: REGISTRY_ABI,
     functionName: "setSubnodeOwner",
     args: [
       parentNode,
       labelhash(label),
-      ensWalletClient.account.address,
+      getWallet().account.address,
     ],
   })
-  await ensPublicClient.waitForTransactionReceipt({ hash: createTxHash })
+  const createReceipt = await ensPublicClient.waitForTransactionReceipt({ hash: createTxHash })
+  console.log(`[ens:subname] setSubnodeOwner tx confirmed`, {
+    txHash: createTxHash,
+    status: createReceipt.status,
+  })
 
   // 2. Set resolver to public resolver
-  const resolverTxHash = await ensWalletClient.writeContract({
+  console.log(`[ens:subname] step 2: setResolver`)
+  const resolverTxHash = await getWallet().writeContract({
     address: ENS_REGISTRY,
     abi: REGISTRY_ABI,
     functionName: "setResolver",
-    args: [fullNode, ENS_TEXT_RESOLVER],
+    args: [fullNode, ENS_PUBLIC_RESOLVER],
   })
-  await ensPublicClient.waitForTransactionReceipt({ hash: resolverTxHash })
+  const resolverReceipt = await ensPublicClient.waitForTransactionReceipt({ hash: resolverTxHash })
+  console.log(`[ens:subname] setResolver tx confirmed`, {
+    txHash: resolverTxHash,
+    status: resolverReceipt.status,
+  })
 
   return { ensName, createTxHash, resolverTxHash }
 }
@@ -144,15 +174,35 @@ export async function readTextRecord(
   key: string
 ): Promise<string | null> {
   const node = namehash(ensName)
+  console.log(`[ens:read] reading text record`, {
+    ensName,
+    key,
+    node,
+    resolver: ENS_PUBLIC_RESOLVER,
+  })
   try {
     const value = await ensPublicClient.readContract({
-      address: ENS_TEXT_RESOLVER,
+      address: ENS_PUBLIC_RESOLVER,
       abi: RESOLVER_ABI,
       functionName: "text",
       args: [node, key],
     })
-    return (value as string) || null
-  } catch {
+    const result = (value as string) || null
+    console.log(`[ens:read] text record result`, {
+      ensName,
+      key,
+      value: result,
+      length: result?.length ?? 0,
+    })
+    return result
+  } catch (err) {
+    console.warn(`[ens:read] FAILED to read text record`, {
+      ensName,
+      key,
+      node,
+      resolver: ENS_PUBLIC_RESOLVER,
+      error: err instanceof Error ? err.message : String(err),
+    })
     return null
   }
 }
@@ -167,13 +217,27 @@ export async function setTextRecord(
   value: string
 ): Promise<string> {
   const node = namehash(ensName)
-  const txHash = await ensWalletClient.writeContract({
-    address: ENS_TEXT_RESOLVER,
+  console.log(`[ens:write] writing text record`, {
+    ensName,
+    key,
+    value: value.length > 66 ? `${value.slice(0, 16)}...${value.slice(-8)}` : value,
+    node,
+    resolver: ENS_PUBLIC_RESOLVER,
+    from: getWallet().account.address,
+  })
+  const txHash = await getWallet().writeContract({
+    address: ENS_PUBLIC_RESOLVER,
     abi: RESOLVER_ABI,
     functionName: "setText",
     args: [node, key, value],
   })
-  await ensPublicClient.waitForTransactionReceipt({ hash: txHash })
+  const receipt = await ensPublicClient.waitForTransactionReceipt({ hash: txHash })
+  console.log(`[ens:write] text record tx confirmed`, {
+    ensName,
+    key,
+    txHash,
+    status: receipt.status,
+  })
   return txHash
 }
 
