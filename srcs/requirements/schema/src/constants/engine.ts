@@ -1,0 +1,8 @@
+export const DEFAULT_BID_PRICE = 0.20
+export const DEFAULT_SELL_PRICE = 0.25
+export const DEFAULT_TRANCHE_SIZE = 10
+export const DEFAULT_NO_NEW_ENTRIES_LAST = 10
+export const DEFAULT_KEEP_SELL_AFTER = 10
+export const DEFAULT_CYCLE_INTERVAL_MS = 30_000
+export const DEFAULT_MAX_CAPITAL = 0
+export const DEFAULT_RECONCILE_INTERVAL = 8

@@ -24,3 +24,7 @@ tsconfig.tsbuildinfo
 contracts/out/
 contracts/cache/
 contracts/broadcast/
+
+# Package build artifacts
+srcs/requirements/*/dist/
+srcs/requirements/*/node_modules/

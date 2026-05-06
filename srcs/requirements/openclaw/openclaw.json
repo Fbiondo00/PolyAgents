@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "polyagents": {
+      "command": "node",
+      "args": ["../mcp/dist/index.js"],
+      "env": {
+        "HEDERA_OPERATOR_ID": "${HEDERA_OPERATOR_ID}",
+        "HEDERA_OPERATOR_KEY": "${HEDERA_OPERATOR_KEY}",
+        "ENS_OWNER_PRIVATE_KEY": "${ENS_OWNER_PRIVATE_KEY}",
+        "ENS_RPC_URL": "${ENS_RPC_URL}",
+        "ARC_PRIVATE_KEY": "${ARC_PRIVATE_KEY}",
+        "ARC_RPC_URL": "${ARC_RPC_URL}"
+      }
+    }
+  },
+  "skills": [
+    "skills/polyagents-trading-cycle"
+  ]
+}

@@ -13,31 +13,81 @@ The prototype integrates three sponsor chains:
 
 **Login/Wallet provider:** [Privy](https://privy.io) — multi-chain wallet authentication (email, social login, or wallet connect). Currently mocked via `PrivyConnectMock` component (`components/privy-connect-mock.tsx`). The real integration will use `@privy-io/react-auth` for instant testnet wallet creation with auto-funded Arc USDC, Hedera HBAR, and Polygon MATIC.
 
-**Current state:** Frontend-only demo — all data in localStorage, all chain operations simulated with `setTimeout`. No API routes, no server components, no database. See `docs/user-flow.md` for all 10 user flows.
-
-## Commands
+## Build & Run Commands
 
 ```bash
-npm run dev       # Start dev server (Next.js 16 on port 3000)
+# Frontend (Next.js 16 on port 3000)
+cd srcs/requirements/frontend
+npm run dev       # Start dev server
 npm run build     # Production build
 npm run start     # Start production server
 npm run lint      # ESLint
+
+# Build packages (order: schema → sdk → mcp)
+cd srcs/requirements/schema && npm install && npm run build
+cd srcs/requirements/sdk && npm install && npm run build
+cd srcs/requirements/mcp && npm install && npm run build
+
+# MCP server
+cd srcs/requirements/mcp && node dist/index.js
+
+# Smart contracts (Foundry)
+cd srcs/requirements/contracts
+forge build
+forge test
 ```
 
-No test runner is configured. No Supabase or database is used.
-
-## Tech Stack
-
-- **Next.js 16.2** with App Router (React 19)
-- **TypeScript** strict mode
-- **Tailwind CSS 4** with custom dark theme (colors defined inline, not in tailwind config)
-- **shadcn/ui** components (`components/ui/` — Radix primitives wrapped with CVA)
-- **Recharts** for PnL sparkline and audit bar chart
-- **Zod** for validation (dependency present, not actively used yet)
-- **sonner** for toast notifications
-- **lucide-react** for icons
+No test runner is configured for the frontend. No Supabase or database is used.
 
 ## Architecture
+
+### Project Structure (Inception-style)
+
+```
+PolyAgents/
+├── CLAUDE.md, README.md
+├── docs/                     # All documentation
+└── srcs/
+    └── requirements/
+        ├── frontend/         # Next.js app (app/, components/, lib/, hooks/, public/)
+        ├── schema/           # Shared types, schemas, constants (@polyagents/schema)
+        ├── sdk/              # Business logic modules (@polyagents/sdk)
+        ├── mcp/              # MCP server exposing SDK tools via stdio (@polyagents/mcp)
+        ├── contracts/        # Solidity smart contracts (Foundry)
+        └── openclaw/         # OpenClaw AI agent config + trading-cycle skill
+```
+
+### SDK-First Architecture
+
+All shared logic lives in three npm packages:
+
+1. **`@polyagents/schema`** — Types, Zod schemas, constants, config (no business logic, no runtime deps)
+   - `src/types/` — Vault, EngineState, HederaContext, AgentHooks, TradeDecision, etc.
+   - `src/zod/` — strategyConfigSchema, engineStartSchema, marketTickSchema
+   - `src/constants/` — chain IDs, RPC URLs, engine defaults
+   - `src/config/` — Arc, Hedera, ENS configuration from env vars
+   - Location: `srcs/requirements/schema/src/`
+
+2. **`@polyagents/sdk`** — Business logic, imports schema
+   - `src/modules/hedera/` — Client, HCS logger, HTS vault, agent identity, payments, mirror node, scheduler, vault init
+   - `src/modules/arc/` — Arc market client (viem), ABI, betting, resolution, USDC helpers
+   - `src/modules/ens/` — Client, subname management, policy commitment, agent stats, fleet registry, vault metadata
+   - `src/modules/engine/` — Repositories (localStorage CRUD), PnL computation
+   - `src/modules/store/` — Vault store, vault registry (in-memory)
+   - `src/modules/main.ts` — `PolyAgentsImpl` facade class exposing all modules
+   - `src/providers/` — Client factories (Hedera provider)
+   - Location: `srcs/requirements/sdk/src/`
+
+3. **`@polyagents/mcp`** — MCP server exposing SDK as composable AI tools via stdio
+   - **15 tools:** `start_engine`, `stop_engine`, `run_cycle`, `engine_status`, `fetch_market`, `init_vault`, `pay_oracle`, `fetch_audit`, `hedera_health`, `commit_policy`, `verify_policy`, `fetch_agent_stats`, `create_market`, `place_bet`, `resolve_market`
+   - **2 resources:** `vault://{vaultId}`, `market://{vaultId}`
+   - Location: `srcs/requirements/mcp/src/`
+
+### Frontend
+
+**Next.js 16.2** with App Router (React 19), TypeScript, Tailwind CSS 4, shadcn/ui.
+
+All pages are `'use client'` components. No Server Components, no API routes, no Server Actions.
 
 ### Routing Structure
 
@@ -52,18 +102,18 @@ No test runner is configured. No Supabase or database is used.
 /vault/[id]/token          → HTS token gate status and NFT holdings display
 ```
 
-All pages are `'use client'` components. There are no Server Components, no API routes, and no Server Actions.
-
 ### Data Layer
 
 - **Types:** `lib/types.ts` — `Vault` interface with nested `strategy`, `funding`, `inventory`, `stats`, `activeMarket`, `audit[]`, and `sparkline`
-- **Store:** `lib/store.ts` — CRUD helpers over `localStorage`. Key functions: `getVaults()`, `saveVault()`, `getVaultById()`, `addAuditEvent()`, `updateVaultStats()`, `initDemoVault()`
-- **Demo vault:** `DEMO_VAULT` constant in `lib/types.ts` provides pre-seeded data (127 flips, $4.52 PnL, 23 UP / 17 DOWN shares)
+- **Store:** `lib/store.ts` — CRUD helpers over `localStorage`
+- **SDK Store:** `@polyagents/sdk` → `modules/store/` — vault CRUD, in-memory Hedera context registry
+- **SDK Engine:** `@polyagents/sdk` → `modules/engine/repositories.ts` — localStorage-backed engine runs, orders, market state, PnL
 
 localStorage keys:
 - `polyagents.vaults` — serialized `Vault[]`
 - `polyagents.selectedVaultId`
 - `polyagents.demoVaultCreated` — prevents re-seeding on revisit
+- `polyagents.engine.runs`, `.orders`, `.states`, `.pnl`, `.audits`, `.books`, `.configs`
 
 ### Layout & Navigation
 
@@ -86,6 +136,29 @@ Other docs:
 - **Validation** (`docs/validation.md`) — Prize track eligibility analysis ($9,500 across Arc + Hedera + ENS)
 - **User flows** (`docs/user-flow.md`) — All 10 user flows documented end-to-end
 
+### Smart Contracts
+
+`srcs/requirements/contracts/` — Foundry project with Solidity contracts for Arc integration.
+
+### OpenClaw
+
+`srcs/requirements/openclaw/` — OpenClaw MCP host config:
+- `openclaw.json` — MCP server config pointing to `../mcp/dist/index.js`
+- `skills/polyagents-trading-cycle/` — Autonomous trading skill definition + runner script
+
+## Tech Stack
+
+- **Next.js 16.2** with App Router (React 19)
+- **TypeScript** strict mode
+- **Tailwind CSS 4** with custom dark theme
+- **shadcn/ui** components
+- **Recharts** for PnL sparkline and audit bar chart
+- **Zod** for validation
+- **tsup** for package builds (ESM + CJS)
+- **@modelcontextprotocol/sdk** for MCP server
+- **viem** for Arc/ENS EVM interactions
+- **@hashgraph/sdk** for Hedera operations
+
 ## Styling Conventions
 
 - Dark theme with hardcoded hex colors (no CSS variables for colors):
@@ -98,8 +171,18 @@ Other docs:
 - Badge styles are inline `style={{}}` using type-to-color maps, not Tailwind classes
 - Component library is shadcn/ui — new UI components should follow existing patterns in `components/ui/`
 
+## Conventions
+
+- **SDK-first**: All shared types in `@polyagents/schema`, business logic in `@polyagents/sdk`
+- **Import rewrites**: SDK uses `@polyagents/schema` instead of `@/types/*` path aliases
+- **Env vars**: SDK uses unprefixed vars (`HEDERA_OPERATOR_ID`, `ENS_OWNER_PRIVATE_KEY`, `ARC_PRIVATE_KEY`) instead of `NEXT_PUBLIC_*`
+- **Build order**: schema → sdk → mcp (each depends on the previous)
+- **MCP tools**: All chain operations exposed via `@polyagents/mcp` for AI agent consumption
+
 ## External APIs Referenced
 
-- **Polymarket Gamma API** (`https://gamma-api.polymarket.com`) — market discovery and search (see `docs/api polymarket/`)
-- **Polymarket CLOB API** — order book and trading (planned, not yet connected)
-- **Hedera Mirror Node** (`https://testnet.mirrornode.hedera.com/api/v1`) — audit log queries (planned)
+- **Polymarket Gamma API** (`https://gamma-api.polymarket.com`) — market discovery and search
+- **Polymarket CLOB API** — order book and trading (planned)
+- **Hedera Mirror Node** (`https://testnet.mirrornode.hedera.com/api/v1`) — audit log queries
+- **Arc Testnet RPC** — EVM interactions for prediction markets
+- **ENS (Sepolia)** — text record commits, subname management
