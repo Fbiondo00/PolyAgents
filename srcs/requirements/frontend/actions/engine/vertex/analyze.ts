@@ -5,10 +5,7 @@ import type { MarketContext, TradeDecision } from "@/types/trade-decision"
 // Gemini 2.0 Flash Lite pricing per 1M tokens (USD)
 const INPUT_COST_PER_TOKEN = 0.075 / 1_000_000
 const OUTPUT_COST_PER_TOKEN = 0.30 / 1_000_000
-// HBAR reference price for USD→HBAR conversion
-const HBAR_USD_PRICE = 0.25
-// Minimum payment in HBAR (Hedera tinybar precision)
-const MIN_PAYMENT_HBAR = 0.00001
+
 
 const SYSTEM_PROMPT = `You are an autonomous market-making strategist for a prediction market bot. You analyze 5-minute binary BTC markets (YES/NO outcomes) and decide whether to place passive limit orders.
 
@@ -129,9 +126,9 @@ export async function analyzeMarket(
       const promptTokens = result.usage.inputTokens ?? 0
       const completionTokens = result.usage.outputTokens ?? 0
       const costUsd = promptTokens * INPUT_COST_PER_TOKEN + completionTokens * OUTPUT_COST_PER_TOKEN
-      const costHbar = Math.max(costUsd / HBAR_USD_PRICE, MIN_PAYMENT_HBAR)
+      const costHbar = 0
       decision.usage = { promptTokens, completionTokens, costUsd, costHbar }
-      console.log(`[AI] Usage: ${promptTokens}+${completionTokens} tokens, $${costUsd.toFixed(6)}, ${costHbar.toFixed(6)} HBAR`)
+      console.log(`[AI] Usage: ${promptTokens}+${completionTokens} tokens, $${costUsd.toFixed(6)}`)
     }
 
     return decision

@@ -31,7 +31,12 @@
       "WebSearch",
       "Bash(node -e:*)",
       "mcp__zai-mcp-server__extract_text_from_screenshot",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(grep *)",
+      "Bash(npx tsup *)",
+      "Bash(npx esbuild *)",
+      "Bash(git add *)",
+      "Bash(git rm *)"
     ]
   }
 }

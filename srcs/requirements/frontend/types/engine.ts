@@ -83,10 +83,6 @@ export interface MarketState {
   buyCancelDone: boolean;
   sellCancelDone: boolean;
   pendingOldMarketId: string | null;
-  // Arc contract settlement
-  arcMarketId: number | null;
-  arcResolved: boolean;
-  arcClaimed: boolean;
 }
 
 export interface EngineRun {

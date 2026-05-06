@@ -1,6 +1,13 @@
-import type { PaymentReceipt } from './hedera'
 import type { PnlSnapshot } from './engine'
 import type { AuditEvent } from './vault'
+
+/** Payment receipt for agent cycle transactions. */
+export interface PaymentReceipt {
+  txId: string
+  amount: string
+  consensusTimestamp: string
+  hashscanUrl: string
+}
 
 export interface AgentHooks {
   onBeforeLLMCall: (
@@ -46,5 +53,4 @@ export interface AgentStatus {
   engineState: string
   cyclesCompleted: number
   lastPnl: number
-  hederaHealthy: boolean | null
 }

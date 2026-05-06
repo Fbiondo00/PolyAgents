@@ -17,13 +17,12 @@ export interface ActiveMarketData {
   yesBook: { bestBid: number | null; bestAsk: number | null }
   noBook: { bestBid: number | null; bestAsk: number | null }
   isLive: boolean
-  arcMarketId?: number
   toExpiry: number
 }
 
 export interface CycleResult {
   success: boolean
-  status: "completed" | "no_market" | "error" | "oracle_payment_failed"
+  status: "completed" | "no_market" | "error"
   fills: number
   pnl: number
   reasoning?: string

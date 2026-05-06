@@ -29,12 +29,10 @@ const TICKER_ITEMS = [
 ]
 
 const DIAGRAM_NODES = [
-  { label: 'Polymarket CLOB', x: '10%', y: '20%' },
-  { label: 'AI Agent', x: '42%', y: '10%' },
-  { label: 'Arc (USDC)', x: '75%', y: '20%' },
-  { label: 'Vault Strategy', x: '42%', y: '50%' },
-  { label: 'Hedera HCS', x: '10%', y: '75%' },
-  { label: 'ENS Identity', x: '75%', y: '75%' },
+  { label: 'Polymarket CLOB', x: '15%', y: '25%' },
+  { label: 'AI Agent', x: '50%', y: '15%' },
+  { label: 'Vault Strategy', x: '50%', y: '55%' },
+  { label: 'Risk Engine', x: '80%', y: '40%' },
 ]
 
 const STRATEGY_STEPS = [
@@ -43,42 +41,6 @@ const STRATEGY_STEPS = [
   { step: '03', title: 'Fill & Flip', desc: 'When filled, instantly sell at $0.02. 100% spread capture per share — no directional risk.' },
   { step: '04', title: 'Roll Over', desc: 'Before expiry, cancel open orders and roll into the next 5-minute window. Non-stop cycle.' },
   { step: '05', title: 'Reconcile', desc: 'Cross-check on-chain inventory with local ledger. Patch any drift from network latency.' },
-]
-
-const SPONSOR_INTEGRATIONS = [
-  {
-    name: 'Arc',
-    role: 'Settlement Layer',
-    color: '#4DD0E1',
-    points: [
-      'USDC-native EVM L1 — gas in dollars, not ETH',
-      'PolyAgentsMarket contract for binary prediction markets',
-      'Deterministic finality in ~2s',
-      'On-chain vault balance & position tracking',
-    ],
-  },
-  {
-    name: 'Hedera',
-    role: 'Access Control & Audit',
-    color: '#26A69A',
-    points: [
-      'HTS token gating — vault creation requires operator token',
-      'HCS immutable audit log — every bid, fill, rollover recorded',
-      'HBAR micropayments before each AI inference call',
-      'HCS-14 on-chain agent identity (UAID)',
-    ],
-  },
-  {
-    name: 'ENS',
-    role: 'Agent Identity Layer',
-    color: '#FF8F00',
-    points: [
-      'Vault subname (vault-{id}.polyagents.eth) at deploy',
-      'keccak256 policy hash as cryptographic commitment',
-      'Live agent stats as text records (PnL, flips, engine state)',
-      'ENSIP-25 agent verification — cross-chain identity',
-    ],
-  },
 ]
 
 export function HomeClient() {
@@ -215,11 +177,11 @@ export function HomeClient() {
           </div>
         </section>
 
-        {/* Multi-Chain Architecture */}
+        {/* Architecture */}
         <section className="mb-16">
-          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-2">Multi-Chain Architecture</h2>
+          <h2 className="font-heading text-2xl font-bold text-[#E1F5FE] text-center mb-2">Architecture</h2>
           <p className="text-sm text-[#B0BEC5] text-center mb-8 max-w-xl mx-auto">
-            Three sponsor chains, each with a distinct role. No single point of failure.
+            Autonomous trading engine powered by AI analysis on Polymarket binary markets.
           </p>
           <div className="relative rounded-xl border border-[#1A3C50] bg-[#0E1B27] h-56 overflow-hidden mb-8">
             <svg className="absolute inset-0 w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -258,27 +220,6 @@ export function HomeClient() {
               </div>
             ))}
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {SPONSOR_INTEGRATIONS.map(({ name, role, color, points }) => (
-              <div key={name} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-5 relative overflow-hidden">
-                <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: color }} />
-                <div className="flex items-center gap-2 mb-3">
-                  <h3 className="font-heading font-bold text-[#E1F5FE]">{name}</h3>
-                  <Badge className="text-[10px] border-[#1A3C50] bg-[#081216] text-[#B0BEC5]">
-                    {role}
-                  </Badge>
-                </div>
-                <ul className="space-y-2">
-                  {points.map((point) => (
-                    <li key={point} className="flex items-start gap-2 text-xs text-[#B0BEC5] leading-relaxed">
-                      <span className="mt-1.5 shrink-0 h-1 w-1 rounded-full" style={{ background: color }} />
-                      {point}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
         </section>
 
         {/* Core Features */}
@@ -294,27 +235,27 @@ export function HomeClient() {
               {
                 icon: Eye,
                 title: 'AI Market Analysis',
-                desc: 'Vercel AI Gateway with Gemini 2.0 Flash Lite analyses order flow, RSI, and volume to determine entry confidence and sizing.',
+                desc: 'Gemini analyses order flow, RSI, and volume to determine entry confidence and sizing.',
               },
               {
                 icon: Shield,
-                title: 'HTS Token Gate',
-                desc: 'Hedera Token Service mints non-transferable operator tokens. Vault creation and cycle execution require token ownership — skin in the game.',
+                title: 'Risk Engine',
+                desc: 'Position sizing, drawdown limits, and inventory caps protect capital on every cycle.',
               },
               {
-                icon: FileText,
-                title: 'HCS Immutable Audit',
-                desc: 'Every bid, fill, sell, and rollover is logged to Hedera Consensus Service. Queryable via Mirror Node REST API. Export as CSV.',
+                icon: BarChart3,
+                title: 'Fill Simulator',
+                desc: 'Monte Carlo simulation estimates fill probability based on order book depth and queue position.',
               },
               {
-                icon: Globe,
-                title: 'ENS Agent Identity',
-                desc: 'Each vault gets an ENS subname. Policy hash committed via keccak256 text record. Live stats (PnL, flips, engine state) readable by any ENS tool.',
+                icon: RefreshCw,
+                title: 'Auto Rollover',
+                desc: 'Before expiry, cancel open orders and roll into the next 5-minute window. Non-stop cycle.',
               },
               {
                 icon: Lock,
-                title: 'Policy Commitment Scheme',
-                desc: 'keccak256(strategyJSON) published on-chain. Anyone can verify the agent follows its original policy — without seeing the content.',
+                title: 'Policy Commitment',
+                desc: 'keccak256 hash of your strategy config. Verify the agent follows its original policy at any time.',
               },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title} className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-5">
@@ -352,7 +293,7 @@ export function HomeClient() {
         <section className="text-center py-12 mb-8">
           <h2 className="font-heading text-3xl font-bold text-[#E1F5FE] mb-4">Ready to deploy?</h2>
           <p className="text-[#B0BEC5] mb-8 max-w-md mx-auto">
-            5-step wizard. Configure strategy, fund with USDC, and let the agent start scalping 5-minute markets.
+            Configure your strategy, fund your vault, and let the agent start scalping 5-minute markets.
           </p>
           <Link href="/vault/create">
             <Button size="lg" className="bg-[#00A8B5] hover:bg-[#4DD0E1] text-[#081216] font-bold gap-2 glow-teal px-8">

@@ -14,7 +14,6 @@ import {
   saveMarketState,
   addAuditEvent,
 } from "@/actions/engine/store"
-import { resolveArcMarket, fetchPolymarketOutcome } from "@/actions/engine/steps/mirror-arc"
 
 const DEFAULT_CONFIG: StrategyConfig = {
   enabled: true,
@@ -108,16 +107,6 @@ export async function handleExpiry(
       marketId: state.market.conditionId,
       timestamp: Date.now(),
     })
-
-    // Resolve Arc market if it exists (non-blocking, fire-and-forget)
-    if (state.arcMarketId !== null && !state.arcResolved) {
-      const outcome = await fetchPolymarketOutcome(state.market.slug)
-      if (outcome) {
-        resolveArcMarket(vaultId, outcome).catch(() => {})
-      } else {
-        console.log(`[handle-expiry] Polymarket outcome not yet available — will retry next cycle`)
-      }
-    }
 
     actionTaken = true
   }

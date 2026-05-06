@@ -5,8 +5,6 @@
 
 import type { AuditRecord, VirtualOrder } from "@/types/engine"
 import { getRun, getMarketState, getOrders, saveMarketState, addAuditEvent } from "@/actions/engine/store"
-import { claimArcWinnings } from "@/actions/engine/steps/mirror-arc"
-
 export async function reconcile(vaultId: string): Promise<number> {
   const run = getRun(vaultId)
   if (!run) return 0
@@ -47,11 +45,6 @@ export async function reconcile(vaultId: string): Promise<number> {
     ordersChecked: tracked.length,
     timestamp: Date.now(),
   })
-
-  // Claim Arc winnings if market is resolved (non-blocking)
-  if (state.arcMarketId !== null && state.arcResolved && !state.arcClaimed) {
-    claimArcWinnings(vaultId).catch(() => {})
-  }
 
   return tracked.length
 }

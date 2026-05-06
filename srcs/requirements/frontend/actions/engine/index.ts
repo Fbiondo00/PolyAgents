@@ -199,12 +199,6 @@ export async function fetchActiveMarket(vaultId: string): Promise<ActiveMarketDa
       getTopOfBook(market.noTokenId),
     ])
 
-    // Check if there's an Arc mirror for this market
-    const state = getMarketState(vaultId)
-    const arcMarketId = state?.market?.conditionId === market.conditionId
-      ? undefined // TODO: get from state when implemented
-      : undefined
-
     return {
       question: market.question,
       slug: market.slug,
@@ -215,7 +209,6 @@ export async function fetchActiveMarket(vaultId: string): Promise<ActiveMarketDa
       yesBook,
       noBook,
       isLive: adapter.isLive,
-      arcMarketId,
       toExpiry: market.endTs - now,
     }
   } catch {

@@ -7,13 +7,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   noExternal: ['@polyagents/sdk', '@polyagents/schema'],
-  external: [
-    '@hashgraph/sdk',
-    'viem',
-    'viem/accounts',
-    'viem/chains',
-    'viem/ens',
-  ],
+  external: [],
   banner: {
     js: '#!/usr/bin/env node',
   },

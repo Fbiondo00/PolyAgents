@@ -8,11 +8,5 @@ export default defineConfig({
   dts: false,
   clean: true,
   sourcemap: true,
-  external: [
-    '@hashgraph/sdk',
-    'viem',
-    'viem/accounts',
-    'viem/chains',
-    'viem/ens',
-  ],
+  external: [],
 })

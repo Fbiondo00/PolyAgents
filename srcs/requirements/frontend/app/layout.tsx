@@ -18,14 +18,14 @@ const sora = Sora({
 
 export const metadata: Metadata = {
   title: 'PolyAgents — Autonomous Trading Vaults',
-  description: 'AI-powered prediction market trading agents on Hedera. Deploy vaults, automate strategies, and earn yield with PolyAgents.',
+  description: 'AI-powered prediction market trading agents. Deploy vaults, automate strategies, and earn yield with PolyAgents.',
   generator: 'v0.app',
   manifest: '/manifest.json',
-  keywords: ['polymarket', 'hedera', 'trading', 'AI', 'prediction markets', 'vault'],
+  keywords: ['polymarket', 'trading', 'AI', 'prediction markets', 'vault'],
   authors: [{ name: 'PolyAgents' }],
   openGraph: {
     title: 'PolyAgents — Autonomous Trading Vaults',
-    description: 'AI-powered prediction market trading agents on Hedera.',
+    description: 'AI-powered prediction market trading agents.',
     type: 'website',
   },
   icons: {

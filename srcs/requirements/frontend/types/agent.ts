@@ -1,47 +1,37 @@
 // ── Agent Orchestrator Types ──
-// Separated by field: vault.ts (domain), hedera.ts (chain), agent.ts (orchestrator)
-// Docs: Checkpoint 1 — Interface agreement between Pietro + Flavio
+// Separated by field: vault.ts (domain), agent.ts (orchestrator)
 
-import type { PaymentReceipt } from './hedera'
 import type { PnlSnapshot } from '@/lib/engine/types'
 import type { AuditEvent } from './vault'
 
-/** Hooks called during each agent cycle. Pietro provides engine orchestration,
- *  Flavio provides Hedera + ENS implementations. All hooks are optional —
+/** Hooks called during each agent cycle. All hooks are optional —
  *  graceful degradation when context not available. */
 export interface AgentHooks {
-  // ── Hedera hooks (REAL — lib/hedera/ modules complete) ──
-
-  /** Called before engine.step(). Pays 0.001 HBAR via Hedera Consensus Service. */
+  /** Called before engine.step(). */
   onBeforeLLMCall: (
     vaultId: string,
-    topicId: string,
-  ) => Promise<{ paymentReceipt: PaymentReceipt | null }>
+  ) => Promise<void>
 
-  /** Called when a fill is detected on a market side. Logs trade to HCS topic. */
+  /** Called when a fill is detected on a market side. */
   onTradeDecision: (
     vaultId: string,
-    topicId: string,
     side: string,
     pnl: number,
   ) => Promise<void>
 
-  /** Called after engine.step() completes. Logs cycle summary to HCS. */
+  /** Called after engine.step() completes. */
   onCycleComplete: (
     vaultId: string,
-    topicId: string,
     pnl: PnlSnapshot,
   ) => Promise<void>
 
-  /** Called when engine.step() throws. Logs error to HCS. */
+  /** Called when engine.step() throws. */
   onEngineError: (
     vaultId: string,
     error: Error,
   ) => Promise<void>
 
-  // ── ENS hooks (STUB — Flavio implementing) ──
-
-  /** Called when policy hash changes. Commits hash to ENS text record. */
+  /** Called when policy hash changes. */
   onPolicySave: (
     vaultId: string,
     policyHash: string,
@@ -53,7 +43,6 @@ export interface CycleResult {
   success: boolean
   pnl: PnlSnapshot | null
   fills: number
-  paymentReceipt: PaymentReceipt | null
   auditEvent: AuditEvent | null
   error?: string
 }
@@ -64,5 +53,4 @@ export interface AgentStatus {
   engineState: string
   cyclesCompleted: number
   lastPnl: number
-  hederaHealthy: boolean | null
 }

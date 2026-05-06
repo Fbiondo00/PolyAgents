@@ -6,13 +6,22 @@ import { getVaultById, saveVault } from '@/lib/store'
 import { Vault } from '@/types'
 import { StrategyForm } from '@/components/strategy-form'
 import { PolicyHashCard } from '@/components/policy-hash-card'
-import { ENSVerificationCard } from '@/components/ens-verification-card'
-import { computePolicyHash } from '@/lib/ens/policy-commitment'
-import { commitPolicy } from '@/actions/ens'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { Loader2, Save, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+
+function computePolicyHash(strategy: Vault['strategy'], name: string, mode: string): string {
+  // Simple hash for local preview
+  const raw = JSON.stringify({ name, mode, strategy })
+  let hash = 0
+  for (let i = 0; i < raw.length; i++) {
+    const char = raw.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash |= 0
+  }
+  return '0x' + Math.abs(hash).toString(16).padStart(64, '0')
+}
 
 export default function PolicyPage() {
   const params = useParams<{ id: string }>()
@@ -41,27 +50,13 @@ export default function PolicyPage() {
     if (!vault || !strategy) return
     setSaving(true)
 
-    try {
-      // Commit policy hash to ENS (real on-chain transaction)
-      const result = await commitPolicy(vault.id, strategy, vault.name, vault.mode)
-
-      if (!result.success) {
-        toast.error('ENS commit failed', { description: result.error })
-      } else {
-        toast.success('Policy committed to ENS', {
-          description: `Tx: ${result.txHash?.slice(0, 10)}…`,
-        })
-      }
-    } catch {
-      // Non-blocking: ENS failure shouldn't prevent local save
-      toast.warning('ENS commit skipped — saved locally')
-    }
-
     const updated = { ...vault, strategy }
     saveVault(updated)
     setVault(updated)
     setSaved(true)
     setSaving(false)
+
+    toast.success('Policy saved locally')
 
     setTimeout(() => setSaved(false), 3000)
   }
@@ -72,14 +67,12 @@ export default function PolicyPage() {
     <div className="p-4 md:p-6 space-y-6 max-w-2xl">
       <div>
         <h1 className="font-heading text-xl font-bold text-[#E1F5FE]">Policy</h1>
-        <p className="text-sm text-[#B0BEC5]">Modify strategy parameters. Changes are hashed on-chain.</p>
+        <p className="text-sm text-[#B0BEC5]">Modify strategy parameters.</p>
       </div>
 
       <StrategyForm value={strategy} onChange={onStrategyChange} />
 
       <PolicyHashCard hash={hash} />
-
-      <ENSVerificationCard vault={vault} />
 
       <Button
         onClick={handleSave}
@@ -94,7 +87,7 @@ export default function PolicyPage() {
         {saving ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />
-            Committing to ENS…
+            Saving…
           </>
         ) : saved ? (
           <>

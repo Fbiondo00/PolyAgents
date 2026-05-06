@@ -2,33 +2,19 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { usePrivy, useWallets } from '@privy-io/react-auth'
+import { useWallets } from '@privy-io/react-auth'
 import { getVaultById } from '@/lib/store'
 import { Vault } from '@/types'
 import { getEngineRun, getMarketState } from '@/lib/engine/repositories'
 import { computeRunPnL } from '@/lib/engine/pnl'
-import { syncVaultFromChain } from '@/actions/arc/sync-vault'
-import type { MarketDataFormatted, MarketOdds, PositionData } from '@/lib/arc/market-client'
-
-type OnChainMarket = MarketDataFormatted & { odds?: MarketOdds; position?: PositionData }
-
-interface SyncedVaultData {
-  usdcBalance: string
-  marketCount: number
-  markets: OnChainMarket[]
-}
 import { CycleButton } from '@/components/cycle-button'
 import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { InventoryCard } from '@/components/inventory-card'
 import { PnLSparkline } from '@/components/pnl-sparkline'
-import { HCSFeed } from '@/components/hcs-feed'
-import { ENSVerificationCard } from '@/components/ens-verification-card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { buildEnsName } from '@/lib/ens/subname'
-import { ENS_BASE_DOMAIN } from '@/lib/ens/client'
-import { TrendingUp, ChevronRight, Globe, Cpu } from 'lucide-react'
+import { TrendingUp, ChevronRight, Cpu } from 'lucide-react'
 import type { PnlSnapshot } from '@/lib/engine/types'
 
 function KpiCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
@@ -59,13 +45,11 @@ function Skeleton() {
 export default function VaultDashboardPage() {
   const params = useParams<{ id: string }>()
   const { wallets } = useWallets()
-  const walletAddress = wallets.length > 0 ? wallets[0].address : undefined
 
   const [vault, setVault] = useState<Vault | null>(null)
   const [loading, setLoading] = useState(true)
   const [enginePnl, setEnginePnl] = useState<PnlSnapshot | null>(null)
   const [engineState, setEngineState] = useState<string | null>(null)
-  const [chainData, setChainData] = useState<SyncedVaultData | null>(null)
 
   const reload = useCallback(async () => {
     const v = getVaultById(params.id)
@@ -78,14 +62,7 @@ export default function VaultDashboardPage() {
       const pnl = computeRunPnL(params.id)
       setEnginePnl(pnl)
     }
-    // Sync on-chain data from Arc contracts
-    try {
-      const data = await syncVaultFromChain(walletAddress)
-      setChainData(data)
-    } catch {
-      // On-chain sync is best-effort
-    }
-  }, [params.id, walletAddress])
+  }, [params.id])
 
   useEffect(() => {
     reload()
@@ -117,15 +94,6 @@ export default function VaultDashboardPage() {
         <div>
           <h1 className="font-heading text-xl font-bold text-[#E1F5FE]">{vault.name}</h1>
           <div className="flex items-center gap-2 mt-1">
-            <a
-              href={`https://app.ens.domains/${buildEnsName(vault.id)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-[#00A8B5] hover:text-[#4DD0E1] transition-colors"
-            >
-              <Globe className="h-3 w-3" />
-              <span className="font-mono">{buildEnsName(vault.id)}</span>
-            </a>
             <Badge className={cn(
               'text-[10px]',
               vault.mode === 'auto'
@@ -168,62 +136,6 @@ export default function VaultDashboardPage() {
           sub={`${vault.funding.hbar.toFixed(3)} HBAR`}
         />
       </div>
-
-      {/* On-chain Markets (Arc) */}
-      {chainData && chainData.markets.length > 0 && (
-        <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-[#00A8B5]" />
-              <p className="text-xs font-semibold text-[#E1F5FE]">Arc Markets</p>
-              <Badge className="text-[10px] bg-[#00A8B5]/20 text-[#00A8B5] border-[#00A8B5]/30">
-                {chainData.marketCount} on-chain
-              </Badge>
-            </div>
-          </div>
-          <div className="space-y-2">
-            {chainData.markets.map((m, i) => (
-              <div key={i} className="rounded border border-[#1A3C50]/50 bg-[#081216] p-3">
-                <p className="text-xs text-[#E1F5FE] truncate mb-1">{m.question}</p>
-                <div className="grid grid-cols-3 gap-2 text-[10px]">
-                  <div>
-                    <span className="text-[#B0BEC5]">YES </span>
-                    <span className="font-mono text-[#26A69A]">{m.totalYes}</span>
-                  </div>
-                  <div>
-                    <span className="text-[#B0BEC5]">NO </span>
-                    <span className="font-mono text-[#EF5350]">{m.totalNo}</span>
-                  </div>
-                  <div>
-                    <span className="text-[#B0BEC5]">Status </span>
-                    <span className="font-mono text-[#E1F5FE]">{m.resolved ? 'Resolved' : 'Active'}</span>
-                  </div>
-                  {m.odds && (
-                    <>
-                      <div>
-                        <span className="text-[#B0BEC5]">YES% </span>
-                        <span className="font-mono text-[#26A69A]">{(m.odds.yesOdds / 100).toFixed(1)}%</span>
-                      </div>
-                      <div>
-                        <span className="text-[#B0BEC5]">NO% </span>
-                        <span className="font-mono text-[#EF5350]">{(m.odds.noOdds / 100).toFixed(1)}%</span>
-                      </div>
-                    </>
-                  )}
-                  {m.position && (Number(m.position.yesShares) > 0 || Number(m.position.noShares) > 0) && (
-                    <div className="col-span-3">
-                      <span className="text-[#B0BEC5]">Position: </span>
-                      <span className="font-mono text-[#26A69A]">{m.position.yesShares.toString()} YES</span>
-                      <span className="text-[#B0BEC5]"> / </span>
-                      <span className="font-mono text-[#EF5350]">{m.position.noShares.toString()} NO</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Engine PnL panel — shown when engine has run */}
       {enginePnl && (
@@ -314,12 +226,6 @@ export default function VaultDashboardPage() {
           </div>
         </div>
       )}
-
-      {/* HCS Feed */}
-      <HCSFeed topicId={vault.hedera?.topicId} />
-
-      {/* ENS Verification */}
-      <ENSVerificationCard vault={vault} />
 
       {/* Recent Activity */}
       <div className="rounded-lg border border-[#1A3C50] bg-[#0E1B27] overflow-hidden">

@@ -46,14 +46,6 @@ export interface Vault {
     midPrice: number
   } | null
   sparkline?: number[]
-  hedera?: import('./hedera').HederaContext
-  hederaError?: string
-  ens?: {
-    name: string
-    policyHash: string
-    txHashes: string[]
-    initializedAt: number
-  }
 }
 
 export const DEMO_VAULT: Vault = {

@@ -1,3 +1,2 @@
-export { getArcConfig } from './arc'
-export { getHederaConfig } from './hedera'
-export { getEnsConfig, ENS_REGISTRY, ENS_PUBLIC_RESOLVER_SEPOLIA, ENS_FALLBACK_RPCS } from './ens'
+// Config — currently empty after sponsor removal.
+// Add config exports here when new config modules are introduced.

@@ -20,11 +20,6 @@ tsconfig.tsbuildinfo
 # Server-side vault registry (runtime data)
 .vault-registry.json
 
-# Foundry
-contracts/out/
-contracts/cache/
-contracts/broadcast/
-
 # Package build artifacts
 srcs/requirements/*/dist/
 srcs/requirements/*/node_modules/

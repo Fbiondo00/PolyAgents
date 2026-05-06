@@ -11,7 +11,6 @@ import {
   saveMarketState as saveState,
   addAuditEvent,
 } from "@/actions/engine/store"
-import { createArcMarketOnDiscovery } from "@/actions/engine/steps/mirror-arc"
 
 interface DiscoverResult {
   market: ActiveMarket | null
@@ -53,14 +52,8 @@ export async function discoverMarket(vaultId: string): Promise<DiscoverResult> {
     buyCancelDone: false,
     sellCancelDone: false,
     pendingOldMarketId: previousId ?? null,
-    arcMarketId: null,
-    arcResolved: false,
-    arcClaimed: false,
   }
   saveState(vaultId, newState)
-
-  // Create corresponding Arc market (non-blocking)
-  createArcMarketOnDiscovery(vaultId).catch(() => {})
 
   const audit: AuditRecord = {
     type: "MARKET_ROLLOVER",
