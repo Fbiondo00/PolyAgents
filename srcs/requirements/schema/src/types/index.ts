@@ -8,3 +8,4 @@ export type {
 export type { AgentHooks, CycleResult, AgentStatus } from './agent'
 export type { CycleUpdate, ActiveMarketData, WorkflowCycleResult, DeployProgress } from './workflow'
 export type { LlmUsage, TradeDecision, MarketContext } from './trade-decision'
+export type { Database, Tables, TablesInsert, TablesUpdate, Json } from './database'

@@ -6,6 +6,19 @@ import type { ActiveMarket } from "../types";
 const GAMMA_BASE = "https://gamma-api.polymarket.com";
 const CLOB_BASE = "https://clob.polymarket.com";
 
+interface GammaMarket {
+  conditionId?: string;
+  slug?: string;
+  question?: string;
+  clobTokenIds?: string[];
+  outcomes?: string[];
+  startDate?: string;
+  created_at?: string;
+  endDate?: string;
+  closeTime?: string;
+  tickSize?: string;
+}
+
 export interface PolymarketMarket {
   conditionId: string;
   slug: string;
@@ -49,7 +62,7 @@ export async function discoverActiveMarket(now?: number): Promise<ActiveMarket |
   // Phase 2: Fallback broad scan
   try {
     const res = await fetch(`${GAMMA_BASE}/markets?active=true&closed=false&limit=100`);
-    const data: any[] = await res.json();
+    const data: GammaMarket[] = await res.json();
     const keywords = ["bitcoin", "up", "down", "5"];
 
     for (const m of data) {
@@ -65,7 +78,7 @@ export async function discoverActiveMarket(now?: number): Promise<ActiveMarket |
   return generateSimulatedMarket(ts);
 }
 
-function parsePolymarketMarket(raw: any): ActiveMarket | null {
+function parsePolymarketMarket(raw: GammaMarket): ActiveMarket | null {
   const tokens: string[] = raw.clobTokenIds ?? [];
   const outcomes: string[] = raw.outcomes ?? [];
   // Support both YES/NO (standard Polymarket) and Up/Down (BTC 5-min markets)
@@ -83,8 +96,8 @@ function parsePolymarketMarket(raw: any): ActiveMarket | null {
     question: raw.question ?? "",
     yesTokenId: tokens[yesIdx],
     noTokenId: tokens[noIdx],
-    startTs: new Date(raw.startDate ?? raw.created_at).getTime() / 1000,
-    endTs: new Date(raw.endDate ?? raw.closeTime).getTime() / 1000,
+    startTs: new Date(raw.startDate ?? raw.created_at ?? "").getTime() / 1000,
+    endTs: new Date(raw.endDate ?? raw.closeTime ?? "").getTime() / 1000,
     tickSize: parseFloat(raw.tickSize ?? "0.01"),
     minOrderSize: 1,
   };

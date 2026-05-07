@@ -6,6 +6,7 @@
 
 import type { BookTop } from "../types";
 import { getTopOfBook } from "./polymarket-readonly";
+import type { ClobClient, ApiKeyCreds, OpenOrder, OpenOrderParams } from "@polymarket/clob-client";
 
 // ── Public interface ──
 
@@ -96,19 +97,24 @@ class ReadOnlyClobAdapter implements ClobAdapter {
 
 class LiveClobAdapter implements ClobAdapter {
   readonly isLive = true;
-  private client: any = null;
-  private creds: any = null;
+  private client: ClobClient | null = null;
+  private creds: ApiKeyCreds | null = null;
 
   async initialize(): Promise<void> {
     const { ClobClient } = await import("@polymarket/clob-client");
     const { Chain } = await import("@polymarket/clob-client");
 
-    // Use viem (already a project dependency) for the signer
+    // Create a viem WalletClient (matches ClobSigner = EthersSigner | WalletClient)
+    const { createWalletClient, http } = await import("viem");
     const { privateKeyToAccount } = await import("viem/accounts");
+    const { polygon } = await import("viem/chains");
+
     const pk = process.env.POLYMARKET_PRIVATE_KEY;
     if (!pk) throw new Error("POLYMARKET_PRIVATE_KEY not set for live mode");
 
     const account = privateKeyToAccount(pk as `0x${string}`);
+    const walletClient = createWalletClient({ account, chain: polygon, transport: http() });
+
     const funderPk = process.env.POLYMARKET_FUNDER_PRIVATE_KEY as `0x${string}` | undefined;
     const funderAddress = funderPk ? privateKeyToAccount(funderPk).address : undefined;
 
@@ -116,7 +122,7 @@ class LiveClobAdapter implements ClobAdapter {
     this.client = new ClobClient(
       "https://clob.polymarket.com",
       Number(Chain.POLYGON),
-      account as any,
+      walletClient,
       undefined,
       undefined,
       funderAddress,
@@ -133,7 +139,7 @@ class LiveClobAdapter implements ClobAdapter {
       this.client = new ClobClient(
         "https://clob.polymarket.com",
         Number(Chain.POLYGON),
-        account as any,
+        walletClient,
         this.creds,
         undefined,
         funderAddress,
@@ -141,11 +147,11 @@ class LiveClobAdapter implements ClobAdapter {
     } else {
       // Auto-derive API key
       try {
-        this.creds = await this.client.createOrDeriveApiKey();
+        this.creds = await this.client!.createOrDeriveApiKey();
         this.client = new ClobClient(
           "https://clob.polymarket.com",
           Number(Chain.POLYGON),
-          account as any,
+          walletClient,
           this.creds,
           undefined,
           funderAddress,
@@ -161,7 +167,7 @@ class LiveClobAdapter implements ClobAdapter {
     await Promise.all(
       tokenIds.map(async (id) => {
         try {
-          const book = await this.client.getOrderBook(id);
+          const book = await this.client!.getOrderBook(id);
           const bids = book.bids ?? [];
           const asks = book.asks ?? [];
           result[id] = {
@@ -192,7 +198,7 @@ class LiveClobAdapter implements ClobAdapter {
       side: side === "BUY" ? Side.BUY : Side.SELL,
     };
 
-    const resp = await this.client.createAndPostOrder(
+    const resp = await this.client!.createAndPostOrder(
       userOrder,
       {},
       OrderType.GTC,
@@ -206,7 +212,7 @@ class LiveClobAdapter implements ClobAdapter {
 
   async cancelOrder(orderId: string): Promise<boolean> {
     try {
-      await this.client.cancelOrder({ orderID: orderId });
+      await this.client!.cancelOrder({ orderID: orderId });
       return true;
     } catch {
       return false;
@@ -215,7 +221,7 @@ class LiveClobAdapter implements ClobAdapter {
 
   async getOrder(orderId: string): Promise<ClobOrder | null> {
     try {
-      const o = await this.client.getOrder(orderId);
+      const o = await this.client!.getOrder(orderId);
       return {
         id: o.id,
         tokenId: o.asset_id,
@@ -232,10 +238,10 @@ class LiveClobAdapter implements ClobAdapter {
 
   async getOpenOrders(market?: string): Promise<ClobOrder[]> {
     try {
-      const params: any = {};
+      const params: OpenOrderParams = {};
       if (market) params.market = market;
-      const orders = await this.client.getOpenOrders(params);
-      return (orders ?? []).map((o: any) => ({
+      const orders: OpenOrder[] = await this.client!.getOpenOrders(params);
+      return (orders ?? []).map((o) => ({
         id: o.id,
         tokenId: o.asset_id,
         side: o.side === "BUY" ? "BUY" : "SELL",
@@ -251,8 +257,9 @@ class LiveClobAdapter implements ClobAdapter {
 
   async getBalance(): Promise<number> {
     try {
-      const resp = await this.client.getBalanceAllowance({
-        asset_type: "COLLATERAL",
+      const { AssetType } = await import("@polymarket/clob-client");
+      const resp = await this.client!.getBalanceAllowance({
+        asset_type: AssetType.COLLATERAL,
       });
       return parseFloat(resp.balance) / 1e6; // USDC has 6 decimals
     } catch {

@@ -116,7 +116,7 @@ export interface PnlSnapshot {
 export interface AuditRecord {
   type: string;
   timestamp: number;
-  [key: string]: unknown;
+  [key: string]: string | number | boolean | null | object;
 }
 
 export type Books = Record<string, BookTop>;
