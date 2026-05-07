@@ -1,0 +1,52 @@
+# PolyAgents — ETHGlobal Cannes 2026
+# AI-powered autonomous trading vault for Polymarket BTC 5-minute markets
+#
+# Services:
+#   frontend  — Next.js 16 app (Turbopack) on :3000
+#   supabase  — PostgreSQL + PostgREST + GoTrue + Studio (local Supabase)
+
+services:
+  # ── Frontend (Next.js 16) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./requirements/frontend
+      dockerfile: Dockerfile
+    container_name: polyagents-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID}
+    depends_on:
+      - supabase-db
+    networks:
+      - polyagents
+    restart: unless-stopped
+
+  # ── Supabase (PostgreSQL via local supabase CLI) ─────────────────────
+  # Run `supabase start` separately — this compose only declares the
+  # database dependency for production-like stacks.
+  supabase-db:
+    image: supabase/postgres:15.6.1
+    container_name: polyagents-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./requirements/supabase/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - polyagents
+    restart: unless-stopped
+
+volumes:
+  db_data:
+
+networks:
+  polyagents:
+    driver: bridge

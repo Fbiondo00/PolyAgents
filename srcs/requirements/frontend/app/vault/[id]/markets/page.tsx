@@ -21,7 +21,10 @@ export default function MarketsPage() {
   const [betAmount, setBetAmount] = useState('5')
 
   useEffect(() => {
-    setVault(getVaultById(params.id))
+    async function load() {
+      setVault(await getVaultById(params.id))
+    }
+    load()
   }, [params.id])
 
   if (!vault) return null

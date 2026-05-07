@@ -36,8 +36,8 @@ export async function sellCoverage(
   vaultId: string,
   config: StrategyConfig = DEFAULT_CONFIG,
 ): Promise<number> {
-  const run = getRun(vaultId)
-  const state = getMarketState(vaultId)
+  const run = await getRun(vaultId)
+  const state = await getMarketState(vaultId)
   if (!run || !state?.market) return 0
 
   const risk = new RiskEngine(config)
@@ -54,7 +54,7 @@ export async function sellCoverage(
     // Oversell guard: cancel excess sell orders
     if (ledger.openSellQty > ledger.unsoldInventory + EPSILON) {
       console.warn(`[sell-coverage] oversell guard: cancelling excess sells for ${side}`)
-      const allOrders = getOrders(vaultId)
+      const allOrders = await getOrders(vaultId)
       for (const o of Object.values(allOrders)) {
         if (
           o.engineRunId === run.id &&
@@ -68,7 +68,7 @@ export async function sellCoverage(
           }
           o.status = "CANCELLED"
           o.remainingQty = 0
-          saveOrder(vaultId, o)
+          await saveOrder(vaultId, o)
           ledger.openSellQty -= o.remainingQty
         }
       }
@@ -118,7 +118,7 @@ export async function sellCoverage(
       simulated: adapter.isLive ? false : true,
       rejectionReason: null,
     }
-    saveOrder(vaultId, order)
+    await saveOrder(vaultId, order)
 
     ledger.submittedSellQty += missing
     ledger.openSellQty += missing
@@ -126,6 +126,6 @@ export async function sellCoverage(
   }
 
   console.log(`[sell-coverage] total sells placed: ${sellsPlaced}`)
-  saveMarketState(vaultId, state)
+  await saveMarketState(vaultId, state)
   return sellsPlaced
 }

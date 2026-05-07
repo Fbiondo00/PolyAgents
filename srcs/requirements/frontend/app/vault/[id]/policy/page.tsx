@@ -32,12 +32,15 @@ export default function PolicyPage() {
   const [hash, setHash] = useState('')
 
   useEffect(() => {
-    const v = getVaultById(params.id)
-    if (v) {
-      setVault(v)
-      setStrategy(v.strategy)
-      setHash(computePolicyHash(v.strategy, v.name, v.mode))
+    async function load() {
+      const v = await getVaultById(params.id)
+      if (v) {
+        setVault(v)
+        setStrategy(v.strategy)
+        setHash(computePolicyHash(v.strategy, v.name, v.mode))
+      }
     }
+    load()
   }, [params.id])
 
   function onStrategyChange(s: Vault['strategy']) {
@@ -51,7 +54,7 @@ export default function PolicyPage() {
     setSaving(true)
 
     const updated = { ...vault, strategy }
-    saveVault(updated)
+    await saveVault(updated)
     setVault(updated)
     setSaved(true)
     setSaving(false)

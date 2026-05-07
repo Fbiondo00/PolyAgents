@@ -14,20 +14,20 @@ export async function vaultDeployWorkflow(
 ): Promise<{ success: boolean; errors: string[] }> {
   const errors: string[] = []
 
-  function progress(stage: string) {
+  async function progress(stage: string) {
     const event: DeployProgress = {
       stage,
       vaultId,
       timestamp: Date.now(),
     }
-    addAuditEvent(vaultId, { ...event, type: "DEPLOY_PROGRESS" })
+    await addAuditEvent(vaultId, { ...event, type: "DEPLOY_PROGRESS" })
   }
 
   try {
-    progress("complete")
+    await progress("complete")
     return { success: errors.length === 0, errors }
   } catch (err) {
-    progress("error")
+    await progress("error")
     return { success: false, errors: [...errors, String(err)] }
   }
 }

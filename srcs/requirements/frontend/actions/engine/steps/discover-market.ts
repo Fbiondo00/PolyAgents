@@ -37,7 +37,7 @@ export async function discoverMarket(vaultId: string): Promise<DiscoverResult> {
 
   console.log(`[discover] market detected`, { vaultId, question: detected.question, conditionId: detected.conditionId })
 
-  const state = getState(vaultId)
+  const state = await getState(vaultId)
   const currentId = state?.market?.conditionId
   if (currentId === detected.conditionId) return { market: detected, rollover: false }
 
@@ -53,7 +53,7 @@ export async function discoverMarket(vaultId: string): Promise<DiscoverResult> {
     sellCancelDone: false,
     pendingOldMarketId: previousId ?? null,
   }
-  saveState(vaultId, newState)
+  await saveState(vaultId, newState)
 
   const audit: AuditRecord = {
     type: "MARKET_ROLLOVER",
@@ -62,7 +62,7 @@ export async function discoverMarket(vaultId: string): Promise<DiscoverResult> {
     question: detected.question,
     timestamp: Date.now(),
   }
-  addAuditEvent(vaultId, audit)
+  await addAuditEvent(vaultId, audit)
 
   return { market: detected, rollover: !!previousId }
 }

@@ -65,14 +65,17 @@ export default function AgentPage() {
   // ── Initial load ──
 
   useEffect(() => {
-    const v = getVaultById(params.id)
-    setVault(v)
-    if (v) {
-      setHbarPct(Math.round((v.funding.hbar / 1.2) * 100))
-      setRunning(v.mode === 'auto')
-      getEngineStatus(params.id).then(setEngineStatus)
-      loadMarket()
+    async function load() {
+      const v = await getVaultById(params.id)
+      setVault(v)
+      if (v) {
+        setHbarPct(Math.round((v.funding.hbar / 1.2) * 100))
+        setRunning(v.mode === 'auto')
+        getEngineStatus(params.id).then(setEngineStatus)
+        loadMarket()
+      }
     }
+    load()
   }, [params.id])
 
   // ── Countdown timer ──
@@ -137,8 +140,8 @@ export default function AgentPage() {
       }
 
       // Sync vault stats
-      updateVaultStats(vault.id, deltaPnl)
-      setVault(getVaultById(vault.id))
+      await updateVaultStats(vault.id, deltaPnl)
+      setVault(await getVaultById(vault.id))
 
       // Build cycle log
       const marketQ = cycleResult.activeMarket?.question?.slice(0, 35) ?? 'Unknown'
@@ -165,11 +168,11 @@ export default function AgentPage() {
 
   // ── Toggle mode ──
 
-  function toggleMode() {
+  async function toggleMode() {
     if (!vault) return
     const newMode = vault.mode === 'auto' ? 'advisory' : 'auto'
     const updated = { ...vault, mode: newMode as 'auto' | 'advisory' }
-    saveVault(updated)
+    await saveVault(updated)
     setVault(updated)
     setRunning(newMode === 'auto')
     toast.info(`Agent switched to ${newMode} mode`)
@@ -181,8 +184,8 @@ export default function AgentPage() {
     }
   }
 
-  function reload() {
-    setVault(getVaultById(params.id))
+  async function reload() {
+    setVault(await getVaultById(params.id))
   }
 
   if (!vault) return null

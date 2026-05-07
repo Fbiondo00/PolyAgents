@@ -52,13 +52,19 @@ export function HomeClient() {
 
   // Demo vault: solo al mount
   useEffect(() => {
-    initDemoVault()
+    async function load() {
+      await initDemoVault()
+    }
+    load()
   }, [])
 
   // Vault list: reattivo al cambio wallet
   useEffect(() => {
-    setAllVaults(getVaults())
-    setMounted(true)
+    async function load() {
+      setAllVaults(await getVaults())
+      setMounted(true)
+    }
+    load()
   }, [authenticated, wallets])
 
   // Filter: show demo vault always, user vaults only if wallet matches

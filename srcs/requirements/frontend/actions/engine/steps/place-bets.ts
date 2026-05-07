@@ -30,9 +30,9 @@ export async function placeBets(
   vaultId: string,
   config: StrategyConfig = DEFAULT_CONFIG,
 ): Promise<number> {
-  const run = getRun(vaultId)
+  const run = await getRun(vaultId)
   if (!run) return 0
-  const state = getMarketState(vaultId)
+  const state = await getMarketState(vaultId)
   if (!state?.market) return 0
 
   const now = Math.floor(Date.now() / 1000)
@@ -98,7 +98,7 @@ export async function placeBets(
       simulated: adapter.isLive ? false : true,
       rejectionReason: null,
     }
-    saveOrder(vaultId, order)
+    await saveOrder(vaultId, order)
 
     console.log(`[place-bets] order placed`, { vaultId, orderId: order.id, side, isLive: adapter.isLive })
 
@@ -108,7 +108,7 @@ export async function placeBets(
     state.totalNewEntries++
     placed++
 
-    addAuditEvent(vaultId, {
+    await addAuditEvent(vaultId, {
       type: "bid-placed",
       side,
       price: config.entryPrice,
@@ -120,7 +120,7 @@ export async function placeBets(
   }
 
   // State was mutated in place; persist
-  saveMarketState(vaultId, state!)
+  await saveMarketState(vaultId, state!)
 
   console.log(`[place-bets] total placed: ${placed}`, { vaultId })
   return placed

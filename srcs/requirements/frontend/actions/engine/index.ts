@@ -56,9 +56,9 @@ export async function startEngine(
     console.log(`[engine] startEngine called`, { vaultId })
 
     // Stop any existing run
-    const existing = getRun(vaultId)
+    const existing = await getRun(vaultId)
     if (existing) {
-      saveRun(vaultId, { ...existing, status: "stopped", stoppedAt: Date.now(), currentState: "IDLE" })
+      await saveRun(vaultId, { ...existing, status: "stopped", stoppedAt: Date.now(), currentState: "IDLE" })
     }
 
     // Create new run
@@ -74,9 +74,9 @@ export async function startEngine(
       lastHeartbeatAt: Date.now(),
       lastError: null,
     }
-    saveRun(vaultId, run)
+    await saveRun(vaultId, run)
 
-    addAuditEvent(vaultId, {
+    await addAuditEvent(vaultId, {
       type: "ENGINE_STARTED",
       runId,
       timestamp: Date.now(),
@@ -95,17 +95,17 @@ export async function startEngine(
 export async function stopEngine(vaultId: string): Promise<boolean> {
   console.log(`[engine] stopEngine called`, { vaultId })
 
-  const run = getRun(vaultId)
+  const run = await getRun(vaultId)
   if (!run) return false
 
-  saveRun(vaultId, {
+  await saveRun(vaultId, {
     ...run,
     status: "stopped",
     stoppedAt: Date.now(),
     currentState: "IDLE",
   })
 
-  addAuditEvent(vaultId, {
+  await addAuditEvent(vaultId, {
     type: "ENGINE_STOPPED",
     runId: run.id,
     timestamp: Date.now(),
@@ -115,7 +115,7 @@ export async function stopEngine(vaultId: string): Promise<boolean> {
 }
 
 export async function getEngineStatus(vaultId: string): Promise<EngineStatus> {
-  const run = getRun(vaultId)
+  const run = await getRun(vaultId)
   if (!run) {
     console.log(`[engine] getEngineStatus`, { vaultId, running: false, state: "IDLE" })
     return {
@@ -146,7 +146,7 @@ export async function runSingleCycle(
   console.log(`[engine] runSingleCycle called`, { vaultId })
 
   // Ensure a run exists
-  let run = getRun(vaultId)
+  let run = await getRun(vaultId)
   if (!run) {
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     run = {
@@ -160,15 +160,15 @@ export async function runSingleCycle(
       lastHeartbeatAt: Date.now(),
       lastError: null,
     }
-    saveRun(vaultId, run)
+    await saveRun(vaultId, run)
   }
 
   const result = await tradingCycleWorkflow(vaultId, config)
 
   // Auto-stop after single cycle (if not continuous mode)
-  const currentRun = getRun(vaultId)
+  const currentRun = await getRun(vaultId)
   if (currentRun) {
-    saveRun(vaultId, { ...currentRun, lastHeartbeatAt: Date.now() })
+    await saveRun(vaultId, { ...currentRun, lastHeartbeatAt: Date.now() })
   }
 
   console.log(`[engine] cycle complete`, { vaultId, status: result.status, fills: result.fills, pnl: result.pnl })

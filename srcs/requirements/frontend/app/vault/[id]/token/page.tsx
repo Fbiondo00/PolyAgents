@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { getVaultById } from '@/lib/store'
 import { Vault } from '@/types'
@@ -9,7 +10,14 @@ import { Coins, Shield, XCircle, CheckCircle2 } from 'lucide-react'
 
 export default function TokenPage() {
   const params = useParams<{ id: string }>()
-  const vault = getVaultById(params.id)
+  const [vault, setVault] = useState<Vault | null>(null)
+
+  useEffect(() => {
+    async function load() {
+      setVault(await getVaultById(params.id))
+    }
+    load()
+  }, [params.id])
 
   if (!vault) return null
 

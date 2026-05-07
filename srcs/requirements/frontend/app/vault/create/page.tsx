@@ -86,7 +86,7 @@ export default function CreateVaultPage() {
         sparkline: [0],
       }
 
-      saveVault(vault)
+      await saveVault(vault)
       setDeployDone(true)
       setDeploying(false)
 

@@ -1,8 +1,64 @@
-No, PolyAgents doesn't need Supabase (or any traditional database) for the ETHGlobal prototype. The architecture relies entirely on sponsor-native on-chain primitives: Arc EVM contracts for positions, Hedera HTS for tokens/HBAR payments/HCS logs (via JS SDK), ENS text records for commitments, and Polymarket API for market data—no off-chain persistence required beyond localStorage for the frontend demo.
-Why No Database
-Hedera HCS handles immutable decision/access logs (one topic per vault). Query via Mirror Node REST API.[1]
-Arc EVM stores USDC positions/PnL directly.[3]
-HTS tokens track operator access and trade NFTs. Balances queried via SDK.[1]
-ENS publishes public stats (policy hash, PnL, mode).[3]
-Frontend uses localStorage for vault drafts, mock activity, and user state—persists across reloads without backend.[2]
-This keeps the stack lean (23h build), sponsor-focused (zero non-sponsor deps), and demo-ready (no DB setup/seed/migration). Post-hackathon, Supabase could add user accounts or RAG embeddings if scaling to multi-vault/multi-operator, but it's unnecessary here.
+# Data Storage
+
+PolyAgents uses a dual data layer: Supabase (PostgreSQL) for backend persistence and localStorage for frontend demo state.
+
+## Supabase (Primary Backend)
+
+Local Supabase provides a full PostgreSQL database with typed queries for all vault and engine data.
+
+**Location:** `srcs/requirements/supabase/` — contains `config.toml` and `migrations/`.
+
+### Tables
+
+| Table | Purpose |
+|-------|---------|
+| `vaults` | Vault metadata, strategy config, funding, inventory |
+| `engine_runs` | Running/stopped engine instances |
+| `engine_orders` | All virtual orders (open, filled, cancelled) |
+| `engine_market_states` | Per-market side ledgers and state |
+| `engine_pnl_snapshots` | PnL snapshots over time |
+| `engine_audit` | Full audit trail for every engine action |
+| `engine_configs` | Strategy parameter snapshots |
+| `engine_books` | Order book snapshots per cycle |
+
+### SDK Queries
+
+All database operations live in `@polyagents/sdk` → `modules/supabase/queries.ts`. These use generated types from `@polyagents/schema` → `types/database.ts` (produced by `supabase gen types typescript --local`).
+
+```typescript
+import { createServerClient } from "@polyagents/sdk/modules/supabase/client";
+import { getVault, insertVault, getEngineOrders } from "@polyagents/sdk/modules/supabase/queries";
+```
+
+### Setup
+
+```bash
+cd srcs/requirements/supabase
+supabase start     # Starts PostgreSQL, Auth, Realtime on 127.0.0.1:54321
+supabase stop      # Stop containers
+```
+
+Environment variables (auto-configured by `supabase start`):
+- `SUPABASE_URL` — defaults to `http://127.0.0.1:54321`
+- `SUPABASE_SERVICE_ROLE_KEY` — printed by `supabase start`
+
+## localStorage (Frontend Demo)
+
+The frontend uses localStorage for client-side state that persists across reloads without a backend. This is the legacy/fallback layer.
+
+**Keys:**
+- `polyagents.vaults` — serialized `Vault[]`
+- `polyagents.selectedVaultId`
+- `polyagents.demoVaultCreated`
+- `polyagents.engine.runs`, `.orders`, `.states`, `.pnl`, `.audits`, `.books`, `.configs`
+
+**SDK modules:** `@polyagents/sdk` → `modules/engine/repositories.ts` and `modules/store/`.
+
+## When to Use Which
+
+| Scenario | Use Supabase | Use localStorage |
+|----------|-------------|-------------------|
+| Backend / MCP server | Yes | No |
+| Frontend demo without Supabase running | No | Yes |
+| Multi-session persistence | Yes | Yes (same browser) |
+| Cross-device access | Yes | No |

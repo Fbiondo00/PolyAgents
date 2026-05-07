@@ -1,110 +1,118 @@
+// Server-side engine store — backed by Supabase (replaces in-memory store)
+
 import type {
   EngineRun,
   MarketState,
   VirtualOrder,
   AuditRecord,
-} from '@/types/engine'
-import type { StrategyConfig } from '@/types/engine-schemas'
+} from "@/types/engine";
+import type { StrategyConfig } from "@/types/engine-schemas";
+import { createServerClient, supabaseQueries as q } from "@polyagents/sdk";
+import {
+  dbToEngineRun,
+  engineRunToDb,
+  engineRunPatchToDb,
+  dbToMarketState,
+  marketStateToDb,
+  dbToVirtualOrder,
+  virtualOrderToDb,
+  virtualOrderPatchToDb,
+  dbToStrategyConfig,
+  strategyConfigToDb,
+  auditRecordToDb,
+  dbToAuditRecord,
+} from "@/lib/db-mappers";
 
-// ── JSON structure ──
+const client = createServerClient();
 
-interface EngineStore {
-  runs: Record<string, EngineRun>
-  marketStates: Record<string, MarketState>
-  orders: Record<string, Record<string, VirtualOrder>>
-  audits: Record<string, AuditRecord[]>
-  configs: Record<string, StrategyConfig>
-  cycleCounts: Record<string, number>
-}
+// ── Cycle counts (kept in-memory — ephemeral per server instance) ──
 
-// In-memory store — works on Vercel (read-only filesystem) and locally
-let store: EngineStore = {
-  runs: {},
-  marketStates: {},
-  orders: {},
-  audits: {},
-  configs: {},
-  cycleCounts: {},
-}
-
-// ── Read / write ──
-
-function readStore(): EngineStore {
-  return store
-}
-
-function writeStore(data: EngineStore): void {
-  store = data
-}
+const cycleCounts = new Map<string, number>();
 
 // ── EngineRun ──
 
-export function getRun(vaultId: string): EngineRun | null {
-  return readStore().runs[vaultId] ?? null
+export async function getRun(vaultId: string): Promise<EngineRun | null> {
+  const row = await q.getEngineRun(client, vaultId);
+  return row ? dbToEngineRun(row) : null;
 }
 
-export function saveRun(vaultId: string, run: EngineRun): void {
-  console.log(`[store] saveRun`, { vaultId, runId: run.id, status: run.status })
-  const store = readStore()
-  store.runs[vaultId] = run
-  writeStore(store)
+export async function saveRun(vaultId: string, run: EngineRun): Promise<void> {
+  console.log(`[store] saveRun`, { vaultId, runId: run.id, status: run.status });
+  try {
+    // Try update first
+    const updated = await q.updateEngineRun(client, vaultId, engineRunPatchToDb(run));
+    if (!updated) {
+      await q.insertEngineRun(client, engineRunToDb(run));
+    }
+  } catch {
+    await q.insertEngineRun(client, engineRunToDb(run));
+  }
 }
 
 // ── MarketState ──
 
-export function getMarketState(vaultId: string): MarketState | null {
-  return readStore().marketStates[vaultId] ?? null
+export async function getMarketState(vaultId: string): Promise<MarketState | null> {
+  const row = await q.getMarketState(client, vaultId);
+  return row ? dbToMarketState(row) : null;
 }
 
-export function saveMarketState(vaultId: string, state: MarketState): void {
-  console.log(`[store] saveMarketState`, { vaultId })
-  const store = readStore()
-  store.marketStates[vaultId] = state
-  writeStore(store)
+export async function saveMarketState(vaultId: string, state: MarketState): Promise<void> {
+  console.log(`[store] saveMarketState`, { vaultId });
+  await q.upsertMarketState(client, marketStateToDb(vaultId, state));
 }
 
 // ── VirtualOrders ──
 
-export function getOrders(vaultId: string): Record<string, VirtualOrder> {
-  return readStore().orders[vaultId] ?? {}
+export async function getOrders(vaultId: string): Promise<Record<string, VirtualOrder>> {
+  const run = await getRun(vaultId);
+  if (!run) return {};
+  const rows = await q.getOrdersForRun(client, run.id);
+  const map: Record<string, VirtualOrder> = {};
+  for (const row of rows) {
+    const order = dbToVirtualOrder(row);
+    map[order.id] = order;
+  }
+  return map;
 }
 
-export function saveOrder(vaultId: string, order: VirtualOrder): void {
-  console.log(`[store] saveOrder`, { vaultId, orderId: order.id, status: order.status })
-  const store = readStore()
-  if (!store.orders[vaultId]) store.orders[vaultId] = {}
-  store.orders[vaultId][order.id] = order
-  writeStore(store)
+export async function saveOrder(vaultId: string, order: VirtualOrder): Promise<void> {
+  console.log(`[store] saveOrder`, { vaultId, orderId: order.id, status: order.status });
+  try {
+    await q.updateOrder(client, order.id, virtualOrderPatchToDb(order));
+  } catch {
+    await q.insertOrder(client, virtualOrderToDb(order, vaultId));
+  }
 }
 
 // ── AuditRecords ──
 
-export function getAuditEvents(vaultId: string): AuditRecord[] {
-  return readStore().audits[vaultId] ?? []
+export async function getAuditEvents(vaultId: string): Promise<AuditRecord[]> {
+  const rows = await q.getAuditEvents(client, vaultId, 500);
+  return rows.map(dbToAuditRecord);
 }
 
-export function addAuditEvent(vaultId: string, event: AuditRecord): void {
-  console.log(`[store] addAuditEvent`, { vaultId, eventType: event.type })
-  const store = readStore()
-  if (!store.audits[vaultId]) store.audits[vaultId] = []
-  store.audits[vaultId].push(event)
-  writeStore(store)
+export async function addAuditEvent(vaultId: string, event: AuditRecord): Promise<void> {
+  console.log(`[store] addAuditEvent`, { vaultId, eventType: event.type });
+  await q.insertAuditEvent(client, auditRecordToDb(vaultId, event));
 }
 
 // ── StrategyConfig ──
 
-export function getStrategyConfig(vaultId: string): StrategyConfig | null {
-  return readStore().configs[vaultId] ?? null
+export async function getStrategyConfig(vaultId: string): Promise<StrategyConfig | null> {
+  const row = await q.getStrategyConfig(client, vaultId);
+  return row ? dbToStrategyConfig(row) : null;
 }
 
-export function saveStrategyConfig(vaultId: string, config: StrategyConfig): void {
-  const store = readStore()
-  store.configs[vaultId] = config
-  writeStore(store)
+export async function saveStrategyConfig(vaultId: string, config: StrategyConfig): Promise<void> {
+  await q.upsertStrategyConfig(client, strategyConfigToDb(vaultId, config));
 }
 
 // ── Cycle counts ──
 
 export function getCycleCount(vaultId: string): number {
-  return readStore().cycleCounts[vaultId] ?? 0
+  return cycleCounts.get(vaultId) ?? 0;
+}
+
+export function incrementCycleCount(vaultId: string): void {
+  cycleCounts.set(vaultId, (cycleCounts.get(vaultId) ?? 0) + 1);
 }

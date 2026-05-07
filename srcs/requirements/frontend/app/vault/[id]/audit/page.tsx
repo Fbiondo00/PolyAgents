@@ -44,7 +44,10 @@ export default function AuditPage() {
   const [filter, setFilter] = useState<AuditEvent['type'] | 'all'>('all')
 
   useEffect(() => {
-    setVault(getVaultById(params.id))
+    async function load() {
+      setVault(await getVaultById(params.id))
+    }
+    load()
   }, [params.id])
 
   function exportCSV() {

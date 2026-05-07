@@ -36,7 +36,7 @@ export async function tradingCycleWorkflow(
   vaultId: string,
   config: StrategyConfig = DEFAULT_CONFIG,
 ): Promise<CycleResult> {
-  const run = getRun(vaultId)
+  const run = await getRun(vaultId)
   if (!run || run.status !== "running") {
     return { success: false, status: "error", fills: 0, pnl: 0, error: "No active engine run" }
   }
@@ -54,7 +54,7 @@ export async function tradingCycleWorkflow(
     console.log(`[cycle] step 1: discover`)
     const { market } = await discoverMarket(vaultId)
     if (!market) {
-      saveRun(vaultId, { ...run, currentState: "DISCOVERING_MARKET", lastHeartbeatAt: Date.now() })
+      await saveRun(vaultId, { ...run, currentState: "DISCOVERING_MARKET", lastHeartbeatAt: Date.now() })
       return { success: false, status: "no_market", fills: 0, pnl: 0 }
     }
 
@@ -92,7 +92,7 @@ export async function tradingCycleWorkflow(
 
     // 8. Calculate PnL
     console.log(`[cycle] step 8: pnl`)
-    const state = getMarketState(vaultId)
+    const state = await getMarketState(vaultId)
     const pnl = state
       ? state.sides.YES.realizedPnl + state.sides.NO.realizedPnl
       : 0
@@ -125,7 +125,7 @@ export async function tradingCycleWorkflow(
     } catch { /* market data not available */ }
 
     // Update run state
-    saveRun(vaultId, {
+    await saveRun(vaultId, {
       ...run,
       currentState: "QUOTING",
       lastHeartbeatAt: Date.now(),
@@ -135,7 +135,7 @@ export async function tradingCycleWorkflow(
     return { success: true, status: "completed", fills: totalFills, pnl, reasoning: decision?.reasoning, decision, activeMarket }
   } catch (err) {
     console.error(`[cycle] cycle error`, { vaultId, error: String(err) })
-    saveRun(vaultId, {
+    await saveRun(vaultId, {
       ...run,
       currentState: "ERROR",
       lastError: String(err),

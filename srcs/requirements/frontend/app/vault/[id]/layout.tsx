@@ -12,9 +12,12 @@ export default function VaultLayout({ children }: { children: React.ReactNode })
   const [vault, setVault] = useState<Vault | null>(null)
 
   useEffect(() => {
-    setVault(getVaultById(params.id))
+    async function load() {
+      setVault(await getVaultById(params.id))
+    }
+    load()
     // Re-read on focus to pick up any changes
-    const onFocus = () => setVault(getVaultById(params.id))
+    const onFocus = async () => setVault(await getVaultById(params.id))
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [params.id])

@@ -39,7 +39,7 @@ async function cancelSideOrders(
   marketId?: string,
 ): Promise<void> {
   const adapter = await getClobAdapter()
-  const allOrders = getOrders(vaultId)
+  const allOrders = await getOrders(vaultId)
   let cancelCount = 0
   for (const o of Object.values(allOrders)) {
     if (
@@ -59,7 +59,7 @@ async function cancelSideOrders(
       }
       o.status = "CANCELLED"
       o.remainingQty = 0
-      saveOrder(vaultId, o)
+      await saveOrder(vaultId, o)
       cancelCount++
     }
   }
@@ -70,11 +70,11 @@ export async function handleExpiry(
   vaultId: string,
   config: StrategyConfig = DEFAULT_CONFIG,
 ): Promise<boolean> {
-  const state = getMarketState(vaultId)
+  const state = await getMarketState(vaultId)
   if (!state?.market) return false
 
   const now = Math.floor(Date.now() / 1000)
-  const run = getRun(vaultId)
+  const run = await getRun(vaultId)
   if (!run) return false
 
   let actionTaken = false
@@ -102,7 +102,7 @@ export async function handleExpiry(
       state.sides[side].openBuyQty = 0
     }
     state.buyCancelDone = true
-    addAuditEvent(vaultId, {
+    await addAuditEvent(vaultId, {
       type: "MARKET_EXPIRED",
       marketId: state.market.conditionId,
       timestamp: Date.now(),
@@ -119,7 +119,7 @@ export async function handleExpiry(
       state.sides[side].openSellQty = 0
     }
     state.sellCancelDone = true
-    addAuditEvent(vaultId, {
+    await addAuditEvent(vaultId, {
       type: "SELL_CANCEL_POST_EXPIRY",
       marketId: state.market.conditionId,
       timestamp: Date.now(),
@@ -127,6 +127,6 @@ export async function handleExpiry(
     actionTaken = true
   }
 
-  if (actionTaken) saveMarketState(vaultId, state)
+  if (actionTaken) await saveMarketState(vaultId, state)
   return actionTaken
 }

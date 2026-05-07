@@ -1,6 +1,6 @@
 // Strategy Engine — core state machine ported from Python bot/engine.py
 // Each call to step() mirrors one iteration of the Python _run_loop()
-// All state persists in localStorage via the repository layer.
+// All state persists in Supabase via the repository layer.
 
 import type {
   ActiveMarket,
@@ -47,13 +47,13 @@ export class StrategyEngine {
   }
 
   /** Start a new engine run for a vault. */
-  start(vaultId: string): EngineSnapshot {
-    const existing = getEngineRun(vaultId);
+  async start(vaultId: string): Promise<EngineSnapshot> {
+    const existing = await getEngineRun(vaultId);
     if (existing) {
-      updateEngineRun(vaultId, { status: "stopped", stoppedAt: Date.now() });
+      await updateEngineRun(vaultId, { status: "stopped", stoppedAt: Date.now() });
     }
 
-    const run = createEngineRun({
+    const run = await createEngineRun({
       vaultId,
       status: "running",
       currentState: "DISCOVERING_MARKET",
@@ -61,7 +61,7 @@ export class StrategyEngine {
       lastHeartbeatAt: Date.now(),
     });
 
-    addEngineAuditEvent(vaultId, {
+    await addEngineAuditEvent(vaultId, {
       type: "ENGINE_STARTED",
       runId: run.id,
       timestamp: Date.now(),
@@ -71,21 +71,21 @@ export class StrategyEngine {
   }
 
   /** Stop the engine run for a vault. */
-  stop(vaultId: string): void {
-    const run = getEngineRun(vaultId);
+  async stop(vaultId: string): Promise<void> {
+    const run = await getEngineRun(vaultId);
     if (!run) return;
 
     // Cancel all open orders
-    const orders = getOrdersForRun(run.id);
+    const orders = await getOrdersForRun(run.id);
     for (const order of orders) {
       if (order.status === "OPEN" || order.status === "PARTIAL") {
-        cancelVirtualOrder(vaultId, order.id);
+        await cancelVirtualOrder(vaultId, order.id);
       }
     }
 
-    updateEngineRun(vaultId, { status: "stopped", stoppedAt: Date.now(), currentState: "IDLE" });
+    await updateEngineRun(vaultId, { status: "stopped", stoppedAt: Date.now(), currentState: "IDLE" });
 
-    addEngineAuditEvent(vaultId, {
+    await addEngineAuditEvent(vaultId, {
       type: "ENGINE_STOPPED",
       runId: run.id,
       timestamp: Date.now(),
@@ -94,14 +94,14 @@ export class StrategyEngine {
 
   /** Main tick — one iteration of the strategy loop. */
   async step(vaultId: string): Promise<EngineSnapshot> {
-    const run = getEngineRun(vaultId);
+    const run = await getEngineRun(vaultId);
     if (!run || run.status !== "running") return this.snapshot(vaultId);
 
     const now = Math.floor(Date.now() / 1000);
 
     try {
       await this.checkMarketRoll(vaultId, now);
-      this.checkAndApplyFills(vaultId);
+      await this.checkAndApplyFills(vaultId);
       await this.cancelOppositeBuys(vaultId);
       await this.handleExpiry(vaultId, now);
       await this.placeEntries(vaultId, now);
@@ -109,17 +109,17 @@ export class StrategyEngine {
       this.cycleCount++;
 
       if (this.cycleCount % this.config.reconcileIntervalCycles === 0) {
-        this.reconcile(vaultId);
+        await this.reconcile(vaultId);
       }
 
-      updateEngineRun(vaultId, { lastHeartbeatAt: Date.now(), currentState: "QUOTING" });
+      await updateEngineRun(vaultId, { lastHeartbeatAt: Date.now(), currentState: "QUOTING" });
     } catch (err) {
-      updateEngineRun(vaultId, {
+      await updateEngineRun(vaultId, {
         status: "error",
         currentState: "ERROR",
         lastError: String(err),
       });
-      addEngineAuditEvent(vaultId, {
+      await addEngineAuditEvent(vaultId, {
         type: "ENGINE_ERROR",
         error: String(err),
         timestamp: Date.now(),
@@ -136,34 +136,34 @@ export class StrategyEngine {
     const detected = await discoverActiveMarket(now);
     if (!detected) return;
 
-    const state = getMarketState(vaultId);
+    const state = await getMarketState(vaultId);
     const currentId = state?.market?.conditionId;
     if (currentId === detected.conditionId) return;
 
     const previousId = currentId;
     const newState = this.createFreshState(detected);
     if (previousId) newState.pendingOldMarketId = previousId;
-    saveMarketState(vaultId, newState);
+    await saveMarketState(vaultId, newState);
 
     // Cancel old buys
     if (previousId) {
-      for (const o of getOpenOrdersForMarket(vaultId, previousId, "BUY")) {
-        cancelVirtualOrder(vaultId, o.id);
+      for (const o of await getOpenOrdersForMarket(vaultId, previousId, "BUY")) {
+        await cancelVirtualOrder(vaultId, o.id);
       }
     }
 
-    updateEngineRun(vaultId, {
+    await updateEngineRun(vaultId, {
       currentState: "READY" as EngineStateType,
       activeMarketId: detected.conditionId,
     });
 
     // Init books
-    const books = getCachedBooks(vaultId);
+    const books = await getCachedBooks(vaultId);
     books[detected.yesTokenId] = { bestBid: null, bestAsk: null };
     books[detected.noTokenId] = { bestBid: null, bestAsk: null };
-    saveCachedBooks(vaultId, books);
+    await saveCachedBooks(vaultId, books);
 
-    addEngineAuditEvent(vaultId, {
+    await addEngineAuditEvent(vaultId, {
       type: "MARKET_ROLLOVER",
       oldMarketId: previousId ?? "none",
       newMarketId: detected.conditionId,
@@ -174,13 +174,13 @@ export class StrategyEngine {
 
   // ── Fill Detection ──
 
-  private checkAndApplyFills(vaultId: string): void {
-    const run = getEngineRun(vaultId);
-    const state = getMarketState(vaultId);
-    const books = getCachedBooks(vaultId);
+  private async checkAndApplyFills(vaultId: string): Promise<void> {
+    const run = await getEngineRun(vaultId);
+    const state = await getMarketState(vaultId);
+    const books = await getCachedBooks(vaultId);
     if (!run || !state) return;
 
-    const trackedOrders = getOrdersForRun(run.id);
+    const trackedOrders = await getOrdersForRun(run.id);
     const ordersMap = new Map<string, VirtualOrder>();
     for (const o of trackedOrders) ordersMap.set(o.id, o);
 
@@ -192,7 +192,7 @@ export class StrategyEngine {
       if (!order) continue;
 
       this.fillSim.applyFill(order, fill.filledQty, state, fill.reason);
-      updateVirtualOrder(fill.orderId, {
+      await updateVirtualOrder(fill.orderId, {
         filledQty: order.filledQty,
         remainingQty: order.remainingQty,
         status: order.status,
@@ -200,8 +200,8 @@ export class StrategyEngine {
     }
 
     if (fills.length > 0) {
-      saveMarketState(vaultId, state);
-      addEngineAuditEvent(vaultId, {
+      await saveMarketState(vaultId, state);
+      await addEngineAuditEvent(vaultId, {
         type: "SIMULATED_FILLS",
         count: fills.length,
         fills: fills.map(f => ({ orderId: f.orderId, qty: f.filledQty, reason: f.reason })),
@@ -213,9 +213,9 @@ export class StrategyEngine {
   // ── Entry Logic ──
 
   private async placeEntries(vaultId: string, now: number): Promise<void> {
-    const run = getEngineRun(vaultId);
+    const run = await getEngineRun(vaultId);
     if (!run) return;
-    const state = getMarketState(vaultId);
+    const state = await getMarketState(vaultId);
     if (!state || !state.market) return;
 
     const toExpiry = state.market.endTs - now;
@@ -224,7 +224,7 @@ export class StrategyEngine {
     const anyFilled = this.isAnySideFilled(state);
     if (anyFilled && !this.config.allowBothSides) return;
 
-    const books = getCachedBooks(vaultId);
+    const books = await getCachedBooks(vaultId);
 
     for (const side of ["YES", "NO"] as const) {
       const ledger = state.sides[side];
@@ -237,7 +237,7 @@ export class StrategyEngine {
 
       const clientRef = `btc5m-buy-${side.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-      createVirtualOrder({
+      await createVirtualOrder(vaultId, {
         engineRunId: run.id,
         marketId: state.market.conditionId,
         side,
@@ -253,7 +253,7 @@ export class StrategyEngine {
       ledger.openBuyQty += this.config.orderSize;
       state.totalNewEntries++;
 
-      addEngineAuditEvent(vaultId, {
+      await addEngineAuditEvent(vaultId, {
         type: "bid-placed",
         side,
         price: this.config.entryPrice,
@@ -262,17 +262,17 @@ export class StrategyEngine {
       });
     }
 
-    saveMarketState(vaultId, state);
+    await saveMarketState(vaultId, state);
   }
 
   // ── Sell Coverage ──
 
   private async ensureSellCoverage(vaultId: string): Promise<void> {
-    const run = getEngineRun(vaultId);
-    const state = getMarketState(vaultId);
+    const run = await getEngineRun(vaultId);
+    const state = await getMarketState(vaultId);
     if (!run || !state || !state.market) return;
 
-    const books = getCachedBooks(vaultId);
+    const books = await getCachedBooks(vaultId);
     const EPSILON = 1e-9;
 
     for (const side of ["YES", "NO"] as const) {
@@ -281,8 +281,8 @@ export class StrategyEngine {
 
       // Oversell guard
       if (ledger.openSellQty > ledger.unsoldInventory + EPSILON) {
-        for (const o of getOpenOrdersForSide(vaultId, side, "SELL")) {
-          cancelVirtualOrder(vaultId, o.id);
+        for (const o of await getOpenOrdersForSide(vaultId, side, "SELL")) {
+          await cancelVirtualOrder(vaultId, o.id);
           ledger.openSellQty -= o.remainingQty;
         }
         ledger.openSellQty = 0;
@@ -295,7 +295,7 @@ export class StrategyEngine {
       const book = books[tokenId] ?? { bestBid: null, bestAsk: null };
       if (!this.risk.isPassivePrice(book, "SELL", this.config.exitPrice)) continue;
 
-      createVirtualOrder({
+      await createVirtualOrder(vaultId, {
         engineRunId: run.id,
         marketId: state.market.conditionId,
         side,
@@ -311,13 +311,13 @@ export class StrategyEngine {
       ledger.openSellQty += missing;
     }
 
-    saveMarketState(vaultId, state);
+    await saveMarketState(vaultId, state);
   }
 
   // ── Opposite Side Cancel ──
 
   private async cancelOppositeBuys(vaultId: string): Promise<void> {
-    const state = getMarketState(vaultId);
+    const state = await getMarketState(vaultId);
     if (!state) return;
 
     const filledSides = new Set<MarketSide>();
@@ -330,28 +330,28 @@ export class StrategyEngine {
 
     for (const side of ["YES", "NO"] as const) {
       if (filledSides.has(side) || state.sides[side].openBuyQty <= 0) continue;
-      for (const o of getOpenOrdersForSide(vaultId, side, "BUY")) {
-        cancelVirtualOrder(vaultId, o.id);
+      for (const o of await getOpenOrdersForSide(vaultId, side, "BUY")) {
+        await cancelVirtualOrder(vaultId, o.id);
         state.sides[side].openBuyQty -= o.remainingQty;
       }
       state.sides[side].openBuyQty = 0;
     }
 
-    saveMarketState(vaultId, state);
+    await saveMarketState(vaultId, state);
   }
 
   // ── Expiry ──
 
   private async handleExpiry(vaultId: string, now: number): Promise<void> {
-    const state = getMarketState(vaultId);
+    const state = await getMarketState(vaultId);
     if (!state || !state.market) return;
 
     // Pending old market
     if (state.pendingOldMarketId) {
       const grace = now > state.market.endTs + this.config.keepSellOrdersAfterExpirySeconds;
       if (grace) {
-        for (const o of getOpenOrdersForMarket(vaultId, state.pendingOldMarketId, "SELL")) {
-          cancelVirtualOrder(vaultId, o.id);
+        for (const o of await getOpenOrdersForMarket(vaultId, state.pendingOldMarketId, "SELL")) {
+          await cancelVirtualOrder(vaultId, o.id);
         }
         state.pendingOldMarketId = null;
       }
@@ -362,40 +362,40 @@ export class StrategyEngine {
     if (toExpiry <= 0 && !state.buyCancelDone) {
       state.isExpired = true;
       for (const side of ["YES", "NO"] as const) {
-        for (const o of getOpenOrdersForSide(vaultId, side, "BUY")) {
-          cancelVirtualOrder(vaultId, o.id);
+        for (const o of await getOpenOrdersForSide(vaultId, side, "BUY")) {
+          await cancelVirtualOrder(vaultId, o.id);
           state.sides[side].openBuyQty -= o.remainingQty;
         }
         state.sides[side].openBuyQty = 0;
       }
       state.buyCancelDone = true;
-      addEngineAuditEvent(vaultId, { type: "MARKET_EXPIRED", marketId: state.market.conditionId, timestamp: Date.now() });
+      await addEngineAuditEvent(vaultId, { type: "MARKET_EXPIRED", marketId: state.market.conditionId, timestamp: Date.now() });
     }
 
     if (toExpiry <= -this.config.keepSellOrdersAfterExpirySeconds && !state.sellCancelDone) {
       for (const side of ["YES", "NO"] as const) {
-        for (const o of getOpenOrdersForSide(vaultId, side, "SELL")) {
-          cancelVirtualOrder(vaultId, o.id);
+        for (const o of await getOpenOrdersForSide(vaultId, side, "SELL")) {
+          await cancelVirtualOrder(vaultId, o.id);
           state.sides[side].openSellQty -= o.remainingQty;
         }
         state.sides[side].openSellQty = 0;
       }
       state.sellCancelDone = true;
-      addEngineAuditEvent(vaultId, { type: "SELL_CANCEL_POST_EXPIRY", marketId: state.market.conditionId, timestamp: Date.now() });
+      await addEngineAuditEvent(vaultId, { type: "SELL_CANCEL_POST_EXPIRY", marketId: state.market.conditionId, timestamp: Date.now() });
     }
 
-    saveMarketState(vaultId, state);
+    await saveMarketState(vaultId, state);
   }
 
   // ── Reconciliation ──
 
-  private reconcile(vaultId: string): void {
-    const run = getEngineRun(vaultId);
+  private async reconcile(vaultId: string): Promise<void> {
+    const run = await getEngineRun(vaultId);
     if (!run) return;
-    const state = getMarketState(vaultId);
+    const state = await getMarketState(vaultId);
     if (!state) return;
 
-    const tracked = getOrdersForRun(run.id);
+    const tracked = await getOrdersForRun(run.id);
 
     for (const side of ["YES", "NO"] as const) {
       const ledger = state.sides[side];
@@ -410,8 +410,8 @@ export class StrategyEngine {
         .reduce((sum, o) => sum + o.remainingQty, 0);
     }
 
-    saveMarketState(vaultId, state);
-    addEngineAuditEvent(vaultId, { type: "RECONCILIATION", ordersChecked: tracked.length, timestamp: Date.now() });
+    await saveMarketState(vaultId, state);
+    await addEngineAuditEvent(vaultId, { type: "RECONCILIATION", ordersChecked: tracked.length, timestamp: Date.now() });
   }
 
   // ── Helpers ──
@@ -439,14 +439,14 @@ export class StrategyEngine {
     };
   }
 
-  private snapshot(vaultId: string): EngineSnapshot {
-    const state = getMarketState(vaultId);
-    const books = getCachedBooks(vaultId);
-    const run = getEngineRun(vaultId);
+  private async snapshot(vaultId: string): Promise<EngineSnapshot> {
+    const state = await getMarketState(vaultId);
+    const books = await getCachedBooks(vaultId);
+    const run = await getEngineRun(vaultId);
 
     let orders: Record<string, VirtualOrder> = {};
     if (run) {
-      for (const o of getOrdersForRun(run.id)) {
+      for (const o of await getOrdersForRun(run.id)) {
         orders[o.id] = o;
       }
     }
@@ -465,8 +465,8 @@ export class StrategyEngine {
 
 const engines = new Map<string, StrategyEngine>();
 
-export function getOrCreateEngine(vaultId: string): StrategyEngine {
-  const config = getStrategyConfig(vaultId);
+export async function getOrCreateEngine(vaultId: string): Promise<StrategyEngine> {
+  const config = await getStrategyConfig(vaultId);
   let engine = engines.get(vaultId);
   if (!engine) {
     engine = new StrategyEngine(config);

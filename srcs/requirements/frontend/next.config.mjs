@@ -1,3 +1,8 @@
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
@@ -6,6 +11,13 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-}
+  turbopack: {
+    root: path.resolve(__dirname, "../../"),
+    resolveAlias: {
+      "@polyagents/sdk": "./requirements/sdk/dist/index.js",
+      "@polyagents/schema": "./requirements/schema/dist/index.js",
+    },
+  },
+};
 
-export default nextConfig
+export default nextConfig;

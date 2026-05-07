@@ -19,7 +19,7 @@ export async function continuousWorkflow(
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const run = getRun(vaultId)
+    const run = await getRun(vaultId)
 
     // Stop if engine is no longer running
     if (!run || run.status !== "running") {

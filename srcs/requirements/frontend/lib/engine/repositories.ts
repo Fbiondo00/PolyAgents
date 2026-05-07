@@ -1,4 +1,4 @@
-// Engine state repository — localStorage for hackathon (no Supabase)
+// Engine state repository — Supabase-backed persistence
 
 import type {
   ActiveMarket,
@@ -11,31 +11,26 @@ import type {
   AuditRecord,
 } from "./types";
 import type { StrategyConfig } from "./schemas";
-
-const RUNS_KEY = "polyagents.engine.runs";
-const ORDERS_KEY = "polyagents.engine.orders";
-const STATES_KEY = "polyagents.engine.states";
-const PNLS_KEY = "polyagents.engine.pnl";
-const AUDITS_KEY = "polyagents.engine.audits";
-const BOOKS_KEY = "polyagents.engine.books";
-const CONFIGS_KEY = "polyagents.engine.configs";
-
-function isBrowser(): boolean {
-  return typeof window !== "undefined";
-}
-
-function loadArr<T>(key: string): T[] {
-  if (!isBrowser()) return [];
-  try { return JSON.parse(localStorage.getItem(key) ?? "[]"); }
-  catch { return []; }
-}
-
-function persistArr<T>(key: string, data: T[]): void {
-  if (!isBrowser()) return;
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// ── Config ──
+import { supabase } from "@/lib/supabase";
+import { supabaseQueries as q } from "@polyagents/sdk";
+import {
+  dbToEngineRun,
+  engineRunToDb,
+  engineRunPatchToDb,
+  dbToVirtualOrder,
+  virtualOrderToDb,
+  virtualOrderPatchToDb,
+  dbToMarketState,
+  marketStateToDb,
+  dbToPnlSnapshot,
+  pnlSnapshotToDb,
+  auditRecordToDb,
+  dbToAuditRecord,
+  dbToStrategyConfig,
+  strategyConfigToDb,
+  dbToBooks,
+  booksToDb,
+} from "@/lib/db-mappers";
 
 const DEFAULT_CONFIG: StrategyConfig = {
   enabled: true,
@@ -53,31 +48,36 @@ const DEFAULT_CONFIG: StrategyConfig = {
   autoReentryEnabled: false,
 };
 
-export function getStrategyConfig(vaultId: string): StrategyConfig {
-  if (!isBrowser()) return DEFAULT_CONFIG;
+// ── Config ──
+
+export async function getStrategyConfig(vaultId: string): Promise<StrategyConfig> {
   try {
-    const raw = localStorage.getItem(`${CONFIGS_KEY}.${vaultId}`);
-    return raw ? { ...DEFAULT_CONFIG, ...JSON.parse(raw) } : DEFAULT_CONFIG;
-  } catch { return DEFAULT_CONFIG; }
+    const row = await q.getStrategyConfig(supabase, vaultId);
+    return row ? dbToStrategyConfig(row) : DEFAULT_CONFIG;
+  } catch {
+    return DEFAULT_CONFIG;
+  }
 }
 
-export function saveStrategyConfig(vaultId: string, patch: Partial<StrategyConfig>): void {
-  if (!isBrowser()) return;
-  const current = getStrategyConfig(vaultId);
-  localStorage.setItem(`${CONFIGS_KEY}.${vaultId}`, JSON.stringify({ ...current, ...patch }));
+export async function saveStrategyConfig(vaultId: string, patch: Partial<StrategyConfig>): Promise<void> {
+  const current = await getStrategyConfig(vaultId);
+  const merged = { ...current, ...patch };
+  await q.upsertStrategyConfig(supabase, strategyConfigToDb(vaultId, merged));
 }
 
 // ── Engine Runs ──
 
-export function getEngineRun(vaultId: string): EngineRun | null {
-  return loadArr<EngineRun>(RUNS_KEY).find(r => r.vaultId === vaultId && r.status === "running") ?? null;
+export async function getEngineRun(vaultId: string): Promise<EngineRun | null> {
+  const row = await q.getEngineRun(supabase, vaultId);
+  return row ? dbToEngineRun(row) : null;
 }
 
-export function getAllRunningRuns(): EngineRun[] {
-  return loadArr<EngineRun>(RUNS_KEY).filter(r => r.status === "running");
+export async function getAllRunningRuns(): Promise<EngineRun[]> {
+  const rows = await q.getAllRunningRuns(supabase);
+  return rows.map(dbToEngineRun);
 }
 
-export function createEngineRun(partial: { vaultId: string; status: EngineRun["status"]; currentState: EngineRun["currentState"]; activeMarketId: string | null; lastHeartbeatAt: number }): EngineRun {
+export async function createEngineRun(partial: { vaultId: string; status: EngineRun["status"]; currentState: EngineRun["currentState"]; activeMarketId: string | null; lastHeartbeatAt: number }): Promise<EngineRun> {
   const run: EngineRun = {
     id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     ...partial,
@@ -85,149 +85,125 @@ export function createEngineRun(partial: { vaultId: string; status: EngineRun["s
     stoppedAt: null,
     lastError: null,
   };
-  const runs = loadArr<EngineRun>(RUNS_KEY);
-  runs.push(run);
-  persistArr(RUNS_KEY, runs);
+  await q.insertEngineRun(supabase, engineRunToDb(run));
   return run;
 }
 
-export function updateEngineRun(vaultId: string, patch: Partial<EngineRun>): EngineRun | null {
-  const runs = loadArr<EngineRun>(RUNS_KEY);
-  const idx = runs.findIndex(r => r.vaultId === vaultId && r.status !== "stopped" && r.status !== "error");
-  if (idx === -1) return null;
-  Object.assign(runs[idx], patch);
-  persistArr(RUNS_KEY, runs);
-  return runs[idx];
+export async function updateEngineRun(vaultId: string, patch: Partial<EngineRun>): Promise<EngineRun | null> {
+  const row = await q.updateEngineRun(supabase, vaultId, engineRunPatchToDb(patch));
+  return row ? dbToEngineRun(row) : null;
 }
 
 // ── Virtual Orders ──
 
-export function getVirtualOrder(orderId: string): VirtualOrder | null {
-  return loadArr<VirtualOrder>(ORDERS_KEY).find(o => o.id === orderId) ?? null;
+export async function getVirtualOrder(orderId: string): Promise<VirtualOrder | null> {
+  const row = await q.getOrder(supabase, orderId);
+  return row ? dbToVirtualOrder(row) : null;
 }
 
-export function getOrdersForRun(runId: string): VirtualOrder[] {
-  return loadArr<VirtualOrder>(ORDERS_KEY).filter(o => o.engineRunId === runId);
+export async function getOrdersForRun(runId: string): Promise<VirtualOrder[]> {
+  const rows = await q.getOrdersForRun(supabase, runId);
+  return rows.map(dbToVirtualOrder);
 }
 
-export function createVirtualOrder(partial: { engineRunId: string; marketId: string; side: MarketSide; intent: "BUY" | "SELL"; tokenId: string; price: number; submittedQty: number; clientRef: string; simulated: boolean; expiresAt?: number | null }): VirtualOrder {
+export async function createVirtualOrder(vaultId: string, partial: { engineRunId: string; marketId: string; side: MarketSide; intent: "BUY" | "SELL"; tokenId: string; price: number; submittedQty: number; clientRef: string; simulated: boolean; expiresAt?: number | null }): Promise<VirtualOrder> {
   const order: VirtualOrder = {
     id: `ord-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    ...partial,
+    engineRunId: partial.engineRunId,
+    marketId: partial.marketId,
+    side: partial.side,
+    intent: partial.intent,
+    tokenId: partial.tokenId,
+    price: partial.price,
+    submittedQty: partial.submittedQty,
     filledQty: 0,
     remainingQty: partial.submittedQty,
     status: "OPEN",
+    clientRef: partial.clientRef,
     placedAt: Date.now(),
     expiresAt: partial.expiresAt ?? null,
+    simulated: partial.simulated,
     rejectionReason: null,
   };
-  const orders = loadArr<VirtualOrder>(ORDERS_KEY);
-  orders.push(order);
-  persistArr(ORDERS_KEY, orders);
+  await q.insertOrder(supabase, virtualOrderToDb(order, vaultId));
   return order;
 }
 
-export function updateVirtualOrder(orderId: string, patch: Partial<VirtualOrder>): void {
-  const orders = loadArr<VirtualOrder>(ORDERS_KEY);
-  const idx = orders.findIndex(o => o.id === orderId);
-  if (idx !== -1) {
-    Object.assign(orders[idx], patch);
-    persistArr(ORDERS_KEY, orders);
-  }
+export async function updateVirtualOrder(orderId: string, patch: Partial<VirtualOrder>): Promise<void> {
+  await q.updateOrder(supabase, orderId, virtualOrderPatchToDb(patch));
 }
 
-export function getOpenOrdersForSide(vaultId: string, side: MarketSide, intent: "BUY" | "SELL"): VirtualOrder[] {
-  const run = getEngineRun(vaultId);
+export async function getOpenOrdersForSide(vaultId: string, side: MarketSide, intent: "BUY" | "SELL"): Promise<VirtualOrder[]> {
+  const run = await getEngineRun(vaultId);
   if (!run) return [];
-  return loadArr<VirtualOrder>(ORDERS_KEY).filter(
-    o => o.engineRunId === run.id && o.side === side && o.intent === intent && (o.status === "OPEN" || o.status === "PARTIAL")
-  );
+  const rows = await q.getOpenOrdersForSide(supabase, run.id, side, intent);
+  return rows.map(dbToVirtualOrder);
 }
 
-export function getOpenOrdersForMarket(vaultId: string, marketId: string, intent: "BUY" | "SELL"): VirtualOrder[] {
-  const run = getEngineRun(vaultId);
+export async function getOpenOrdersForMarket(vaultId: string, marketId: string, intent: "BUY" | "SELL"): Promise<VirtualOrder[]> {
+  const run = await getEngineRun(vaultId);
   if (!run) return [];
-  return loadArr<VirtualOrder>(ORDERS_KEY).filter(
-    o => o.engineRunId === run.id && o.marketId === marketId && o.intent === intent && (o.status === "OPEN" || o.status === "PARTIAL")
-  );
+  const rows = await q.getOpenOrdersForMarket(supabase, run.id, marketId, intent);
+  return rows.map(dbToVirtualOrder);
 }
 
-export function cancelVirtualOrder(_vaultId: string, orderId: string): void {
-  const orders = loadArr<VirtualOrder>(ORDERS_KEY);
-  const idx = orders.findIndex(o => o.id === orderId);
-  if (idx !== -1) {
-    orders[idx].status = "CANCELLED";
-    orders[idx].remainingQty = 0;
-    persistArr(ORDERS_KEY, orders);
-  }
+export async function cancelVirtualOrder(_vaultId: string, orderId: string): Promise<void> {
+  await q.updateOrder(supabase, orderId, { status: "CANCELLED", remaining_qty: 0 });
 }
 
 // ── Market State ──
 
-export function getMarketState(vaultId: string): MarketState | null {
-  if (!isBrowser()) return null;
+export async function getMarketState(vaultId: string): Promise<MarketState | null> {
   try {
-    const raw = localStorage.getItem(`${STATES_KEY}.${vaultId}`);
-    return raw ? JSON.parse(raw) : null;
-  } catch { return null; }
+    const row = await q.getMarketState(supabase, vaultId);
+    return row ? dbToMarketState(row) : null;
+  } catch {
+    return null;
+  }
 }
 
-export function saveMarketState(vaultId: string, state: MarketState): void {
-  if (!isBrowser()) return;
-  localStorage.setItem(`${STATES_KEY}.${vaultId}`, JSON.stringify(state));
+export async function saveMarketState(vaultId: string, state: MarketState): Promise<void> {
+  await q.upsertMarketState(supabase, marketStateToDb(vaultId, state));
 }
 
 // ── Books Cache ──
 
-export function getCachedBooks(vaultId: string): Books {
-  if (!isBrowser()) return {};
+export async function getCachedBooks(vaultId: string): Promise<Books> {
   try {
-    const raw = localStorage.getItem(`${BOOKS_KEY}.${vaultId}`);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+    const row = await q.getCachedBooks(supabase, vaultId);
+    return row ? dbToBooks(row) : {};
+  } catch {
+    return {};
+  }
 }
 
-export function saveCachedBooks(vaultId: string, books: Books): void {
-  if (!isBrowser()) return;
-  localStorage.setItem(`${BOOKS_KEY}.${vaultId}`, JSON.stringify(books));
+export async function saveCachedBooks(vaultId: string, books: Books): Promise<void> {
+  await q.upsertCachedBooks(supabase, booksToDb(vaultId, books));
 }
 
-export function getActiveMarket(vaultId: string): ActiveMarket | null {
-  return getMarketState(vaultId)?.market ?? null;
+export async function getActiveMarket(vaultId: string): Promise<ActiveMarket | null> {
+  const state = await getMarketState(vaultId);
+  return state?.market ?? null;
 }
 
 // ── PnL Snapshots ──
 
-export function savePnlSnapshot(snapshot: PnlSnapshot): void {
-  const snaps = loadArr<PnlSnapshot>(PNLS_KEY);
-  snaps.push(snapshot);
-  const filtered = snaps.filter(s => s.vaultId === snapshot.vaultId).slice(-200);
-  const others = snaps.filter(s => s.vaultId !== snapshot.vaultId);
-  persistArr(PNLS_KEY, [...others, ...filtered]);
+export async function savePnlSnapshot(snapshot: PnlSnapshot): Promise<void> {
+  await q.insertPnlSnapshot(supabase, pnlSnapshotToDb(snapshot));
 }
 
-export function getPnlSnapshots(vaultId: string, limit = 50): PnlSnapshot[] {
-  return loadArr<PnlSnapshot>(PNLS_KEY).filter(s => s.vaultId === vaultId).slice(-limit);
+export async function getPnlSnapshots(vaultId: string, limit = 50): Promise<PnlSnapshot[]> {
+  const rows = await q.getPnlSnapshots(supabase, vaultId, limit);
+  return rows.map(dbToPnlSnapshot);
 }
 
 // ── Audit Events ──
 
-export function addEngineAuditEvent(vaultId: string, event: AuditRecord): void {
-  const key = `${AUDITS_KEY}.${vaultId}`;
-  if (!isBrowser()) return;
-  try {
-    const existing: AuditRecord[] = JSON.parse(localStorage.getItem(key) ?? "[]");
-    existing.unshift(event);
-    localStorage.setItem(key, JSON.stringify(existing.slice(0, 500)));
-  } catch {
-    localStorage.setItem(key, JSON.stringify([event]));
-  }
+export async function addEngineAuditEvent(vaultId: string, event: AuditRecord): Promise<void> {
+  await q.insertAuditEvent(supabase, auditRecordToDb(vaultId, event));
 }
 
-export function getEngineAuditEvents(vaultId: string, limit = 100): AuditRecord[] {
-  if (!isBrowser()) return [];
-  try {
-    const raw = localStorage.getItem(`${AUDITS_KEY}.${vaultId}`);
-    return raw ? JSON.parse(raw).slice(0, limit) : [];
-  } catch { return []; }
+export async function getEngineAuditEvents(vaultId: string, limit = 100): Promise<AuditRecord[]> {
+  const rows = await q.getAuditEvents(supabase, vaultId, limit);
+  return rows.map(dbToAuditRecord);
 }

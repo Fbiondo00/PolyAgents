@@ -12,8 +12,12 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup && tsc --emitDeclarationOnly --outDir dist",
     "dev": "tsup --watch"
@@ -22,12 +26,18 @@
     "zod": ">=3.22.0"
   },
   "peerDependenciesMeta": {
-    "zod": { "optional": true }
+    "zod": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/node": "^22",
     "tsup": "^8.0.0",
     "typescript": "^5.7.0",
     "zod": "^3.24.1"
+  },
+  "dependencies": {
+    "@polyagents/sdk": "file:../sdk",
+    "@supabase/supabase-js": "^2.105.3"
   }
 }

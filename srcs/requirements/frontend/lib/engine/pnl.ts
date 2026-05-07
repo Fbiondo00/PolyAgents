@@ -5,13 +5,13 @@ import type { MarketState, Books, PnlSnapshot } from "./types";
 import type { StrategyConfig } from "./schemas";
 import { getCachedBooks, getEngineRun, getMarketState, getStrategyConfig, savePnlSnapshot } from "./repositories";
 
-export function computeRunPnL(vaultId: string): PnlSnapshot | null {
-  const run = getEngineRun(vaultId);
+export async function computeRunPnL(vaultId: string): Promise<PnlSnapshot | null> {
+  const run = await getEngineRun(vaultId);
   if (!run) return null;
 
-  const state = getMarketState(vaultId);
-  const config = getStrategyConfig(vaultId);
-  const books = getCachedBooks(vaultId);
+  const state = await getMarketState(vaultId);
+  const config = await getStrategyConfig(vaultId);
+  const books = await getCachedBooks(vaultId);
   const market = state?.market;
   if (!state || !config) return null;
 
@@ -69,6 +69,6 @@ export function computeRunPnL(vaultId: string): PnlSnapshot | null {
     computedAt: Date.now(),
   };
 
-  savePnlSnapshot(snapshot);
+  await savePnlSnapshot(snapshot);
   return snapshot;
 }

@@ -10,7 +10,7 @@ import { analyzeMarket } from "@/actions/engine/vertex/analyze"
 import { getTopOfBook } from "@/lib/engine/adapters/polymarket-readonly"
 
 export async function aiAnalysis(vaultId: string): Promise<TradeDecision> {
-  const state = getMarketState(vaultId)
+  const state = await getMarketState(vaultId)
   if (!state?.market) {
     return { shouldTrade: false, direction: "NONE", confidence: 0, reasoning: "No active market", suggestedSize: 0 }
   }

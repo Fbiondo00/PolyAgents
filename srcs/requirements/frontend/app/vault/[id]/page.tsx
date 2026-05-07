@@ -52,14 +52,14 @@ export default function VaultDashboardPage() {
   const [engineState, setEngineState] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    const v = getVaultById(params.id)
+    const v = await getVaultById(params.id)
     setVault(v)
     setLoading(false)
     // Check engine state
-    const run = getEngineRun(params.id)
+    const run = await getEngineRun(params.id)
     if (run) {
       setEngineState(run.currentState)
-      const pnl = computeRunPnL(params.id)
+      const pnl = await computeRunPnL(params.id)
       setEnginePnl(pnl)
     }
   }, [params.id])

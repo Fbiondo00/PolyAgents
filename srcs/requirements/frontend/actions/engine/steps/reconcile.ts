@@ -6,14 +6,14 @@
 import type { AuditRecord, VirtualOrder } from "@/types/engine"
 import { getRun, getMarketState, getOrders, saveMarketState, addAuditEvent } from "@/actions/engine/store"
 export async function reconcile(vaultId: string): Promise<number> {
-  const run = getRun(vaultId)
+  const run = await getRun(vaultId)
   if (!run) return 0
-  const state = getMarketState(vaultId)
+  const state = await getMarketState(vaultId)
   if (!state) return 0
 
   console.log(`[reconcile] starting reconciliation`, { vaultId })
 
-  const allOrders = Object.values(getOrders(vaultId))
+  const allOrders = Object.values(await getOrders(vaultId))
   const tracked = allOrders.filter((o: VirtualOrder) => o.engineRunId === run.id)
 
   console.log(`[reconcile] ${tracked.length} orders checked`)
@@ -38,9 +38,9 @@ export async function reconcile(vaultId: string): Promise<number> {
     NO: { openBuyQty: state.sides.NO.openBuyQty, openSellQty: state.sides.NO.openSellQty },
   })
 
-  saveMarketState(vaultId, state)
+  await saveMarketState(vaultId, state)
 
-  addAuditEvent(vaultId, {
+  await addAuditEvent(vaultId, {
     type: "RECONCILIATION",
     ordersChecked: tracked.length,
     timestamp: Date.now(),

@@ -31,13 +31,13 @@ cd srcs/requirements/mcp && npm install && npm run build
 # MCP server
 cd srcs/requirements/mcp && node dist/index.js
 
-# Smart contracts (Foundry)
-cd srcs/requirements/contracts
-forge build
-forge test
+# Supabase (local development)
+supabase start                          # Start local Supabase containers
+supabase gen types typescript --local   # Regenerate types after migration changes
+supabase stop                           # Stop containers
 ```
 
-No test runner is configured for the frontend. No Supabase or database is used.
+No test runner is configured for the frontend.
 
 ## Architecture
 
@@ -53,7 +53,7 @@ PolyAgents/
         ├── schema/           # Shared types, schemas, constants (@polyagents/schema)
         ├── sdk/              # Business logic modules (@polyagents/sdk)
         ├── mcp/              # MCP server exposing SDK tools via stdio (@polyagents/mcp)
-        ├── contracts/        # Solidity smart contracts (Foundry)
+        ├── supabase/         # Local Supabase (config.toml, migrations/)
         └── openclaw/         # OpenClaw AI agent config + trading-cycle skill
 ```
 
@@ -73,6 +73,7 @@ All shared logic lives in three npm packages:
    - `src/modules/arc/` — Arc market client (viem), ABI, betting, resolution, USDC helpers
    - `src/modules/ens/` — Client, subname management, policy commitment, agent stats, fleet registry, vault metadata
    - `src/modules/engine/` — Repositories (localStorage CRUD), PnL computation
+   - `src/modules/supabase/` — Supabase client factory, typed queries for all 8 tables
    - `src/modules/store/` — Vault store, vault registry (in-memory)
    - `src/modules/main.ts` — `PolyAgentsImpl` facade class exposing all modules
    - `src/providers/` — Client factories (Hedera provider)
@@ -104,16 +105,18 @@ All pages are `'use client'` components. No Server Components, no API routes, no
 
 ### Data Layer
 
-- **Types:** `lib/types.ts` — `Vault` interface with nested `strategy`, `funding`, `inventory`, `stats`, `activeMarket`, `audit[]`, and `sparkline`
-- **Store:** `lib/store.ts` — CRUD helpers over `localStorage`
-- **SDK Store:** `@polyagents/sdk` → `modules/store/` — vault CRUD, in-memory Hedera context registry
-- **SDK Engine:** `@polyagents/sdk` → `modules/engine/repositories.ts` — localStorage-backed engine runs, orders, market state, PnL
+Two persistence layers:
 
-localStorage keys:
-- `polyagents.vaults` — serialized `Vault[]`
-- `polyagents.selectedVaultId`
-- `polyagents.demoVaultCreated` — prevents re-seeding on revisit
-- `polyagents.engine.runs`, `.orders`, `.states`, `.pnl`, `.audits`, `.books`, `.configs`
+**Supabase (primary backend)** — `srcs/requirements/supabase/`
+- PostgreSQL via local Supabase containers (config.toml + migrations)
+- Typed queries in `@polyagents/sdk` → `modules/supabase/queries.ts`
+- 8 tables: vaults, engine_runs, engine_orders, engine_market_states, engine_pnl_snapshots, engine_audit, engine_configs, engine_books
+- Generated types via `supabase gen types typescript --local` → `schema/src/types/database.ts`
+
+**localStorage (frontend demo / legacy)** — persists across reloads without backend
+- `lib/store.ts` — CRUD helpers over `localStorage`
+- `@polyagents/sdk` → `modules/engine/repositories.ts` — engine runs, orders, market state, PnL
+- Keys: `polyagents.vaults`, `polyagents.selectedVaultId`, `polyagents.demoVaultCreated`, `polyagents.engine.runs`, `.orders`, `.states`, `.pnl`, `.audits`, `.books`, `.configs`
 
 ### Layout & Navigation
 
@@ -138,7 +141,7 @@ Other docs:
 
 ### Smart Contracts
 
-`srcs/requirements/contracts/` — Foundry project with Solidity contracts for Arc integration.
+Arc prediction market contracts were stripped after pivoting to Polymarket-native trading. Arc integration now uses direct EVM calls via viem (see `@polyagents/sdk` → `modules/arc/`).
 
 ### OpenClaw
 
@@ -158,6 +161,7 @@ Other docs:
 - **@modelcontextprotocol/sdk** for MCP server
 - **viem** for Arc/ENS EVM interactions
 - **@hashgraph/sdk** for Hedera operations
+- **Supabase** (local) for PostgreSQL persistence — `@supabase/supabase-js` client with generated types
 
 ## Styling Conventions
 
@@ -178,6 +182,7 @@ Other docs:
 - **Env vars**: SDK uses unprefixed vars (`HEDERA_OPERATOR_ID`, `ENS_OWNER_PRIVATE_KEY`, `ARC_PRIVATE_KEY`) instead of `NEXT_PUBLIC_*`
 - **Build order**: schema → sdk → mcp (each depends on the previous)
 - **MCP tools**: All chain operations exposed via `@polyagents/mcp` for AI agent consumption
+- **Supabase queries**: All database operations in `@polyagents/sdk` → `modules/supabase/queries.ts`, using generated `Database` types from `@polyagents/schema`
 
 ## External APIs Referenced
 
@@ -186,3 +191,4 @@ Other docs:
 - **Hedera Mirror Node** (`https://testnet.mirrornode.hedera.com/api/v1`) — audit log queries
 - **Arc Testnet RPC** — EVM interactions for prediction markets
 - **ENS (Sepolia)** — text record commits, subname management
+- **Supabase (local)** — `http://127.0.0.1:54321` — PostgreSQL for vault/engine persistence

@@ -3,7 +3,7 @@
 // Workflow step: check fills — real CLOB or simulated
 // Ported from StrategyEngine.checkAndApplyFills()
 
-import type { VirtualOrder, AuditRecord, FillReason, Books } from "@/types/engine"
+import type { VirtualOrder, AuditRecord, FillReason, Books, MarketState } from "@/types/engine"
 import type { StrategyConfig } from "@/types/engine-schemas"
 import { FillSimulator } from "@/lib/engine/strategy/fill-simulator"
 import { getClobAdapter } from "@/lib/engine/adapters/polymarket-clob"
@@ -37,8 +37,8 @@ export async function checkFills(
   vaultId: string,
   config: StrategyConfig = DEFAULT_CONFIG,
 ): Promise<number> {
-  const run = getRun(vaultId)
-  const state = getMarketState(vaultId)
+  const run = await getRun(vaultId)
+  const state = await getMarketState(vaultId)
   if (!run || !state) return 0
 
   const adapter = await getClobAdapter()
@@ -72,8 +72,8 @@ export async function checkFills(
 
 async function checkLiveFills(vaultId: string, runId: string): Promise<number> {
   const adapter = await getClobAdapter()
-  const allOrders = getOrders(vaultId)
-  const state = getMarketState(vaultId)
+  const allOrders = await getOrders(vaultId)
+  const state = await getMarketState(vaultId)
   if (!state) return 0
 
   let fillCount = 0
@@ -92,7 +92,7 @@ async function checkLiveFills(vaultId: string, runId: string): Promise<number> {
       o.filledQty = clobOrder.filledSize
       o.remainingQty = o.submittedQty - o.filledQty
       o.status = clobOrder.status === "FILLED" ? "FILLED" : "PARTIAL"
-      saveOrder(vaultId, o)
+      await saveOrder(vaultId, o)
 
       // Update ledger
       const side = o.side as "YES" | "NO"
@@ -112,7 +112,7 @@ async function checkLiveFills(vaultId: string, runId: string): Promise<number> {
 
       fillCount++
 
-      addAuditEvent(vaultId, {
+      await addAuditEvent(vaultId, {
         type: "LIVE_FILL",
         orderId: o.id,
         side: o.side,
@@ -125,7 +125,7 @@ async function checkLiveFills(vaultId: string, runId: string): Promise<number> {
   }
 
   if (fillCount > 0) {
-    saveMarketState(vaultId, state)
+    await saveMarketState(vaultId, state)
   }
 
   return fillCount
@@ -135,11 +135,11 @@ async function checkSimulatedFills(
   vaultId: string,
   runId: string,
   books: Books,
-  state: NonNullable<ReturnType<typeof getMarketState>>,
+  state: MarketState,
   config: StrategyConfig,
 ): Promise<number> {
   // Build orders map
-  const allOrders = getOrders(vaultId)
+  const allOrders = await getOrders(vaultId)
   const ordersMap = new Map<string, VirtualOrder>()
   for (const o of Object.values(allOrders)) {
     if (o.engineRunId === runId) ordersMap.set(o.id, o)
@@ -156,14 +156,14 @@ async function checkSimulatedFills(
     if (!order) continue
 
     fillSim.applyFill(order, fill.filledQty, state, fill.reason)
-    saveOrder(vaultId, order)
+    await saveOrder(vaultId, order)
     fillCount++
   }
 
   console.log(`[check-fills:sim] ${fills.length} simulated fills`)
   if (fills.length > 0) {
-    saveMarketState(vaultId, state)
-    addAuditEvent(vaultId, {
+    await saveMarketState(vaultId, state)
+    await addAuditEvent(vaultId, {
       type: "SIMULATED_FILLS",
       count: fills.length,
       fills: fills.map(f => ({ orderId: f.orderId, qty: f.filledQty, reason: f.reason })),
