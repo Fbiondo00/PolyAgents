@@ -1,0 +1,23 @@
+[package]
+name = "poly-market"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+poly-types = { workspace = true }
+reqwest = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+rust_decimal = { workspace = true }
+chrono = { workspace = true }
+ethers-core = { version = "2", features = ["eip712"] }
+ethers-signers = "2"
+hex = "0.4"
+rand = "0.8"
+url = "2"
+futures-util = "0.3"
+async-trait = "0.1"

@@ -36,7 +36,43 @@
       "Bash(npx tsup *)",
       "Bash(npx esbuild *)",
       "Bash(git add *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(cp -r /Users/ppezz/Desktop/MOODGLOBAL/Sitelab2/docs/sdk-docs/useworkflows docs/sdk-docs/)",
+      "Bash(cp -r /Users/ppezz/Desktop/MOODGLOBAL/Sitelab2/docs/sdk-docs/vercel-ai docs/sdk-docs/)",
+      "Bash(supabase *)",
+      "Bash(sed -n '2,10p' /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/frontend/node_modules/@polymarket/clob-client/dist/types.d.ts)",
+      "Bash(sed -n '166,200p' /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/frontend/node_modules/@polymarket/clob-client/dist/types.d.ts)",
+      "Bash(npm ls *)",
+      "Bash(kill %1)",
+      "Bash(wait)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Bash(npx skills *)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//usr/local/bin/**)",
+      "Bash(brew list *)",
+      "Bash(mkdir -p /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/engine/crates/poly-types/src)",
+      "Bash(mkdir -p /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/engine/crates/poly-db/src)",
+      "Bash(mkdir -p /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/engine/crates/poly-market/src)",
+      "Bash(mkdir -p /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/engine/crates/poly-ai/src)",
+      "Bash(mkdir -p /Users/ppezz/Desktop/Craftale/hackathon/Cannes2026/PolyAgents/srcs/requirements/engine/crates/poly-engine/src)",
+      "Bash(brew install *)",
+      "Bash(terraform fmt *)",
+      "Bash(terraform validate *)",
+      "Bash(terraform init *)",
+      "Bash(cargo check *)",
+      "mcp__zread__get_repo_structure",
+      "Bash(export PATH=\"$HOME/.cargo/bin:$PATH\")",
+      "Bash(cargo clippy *)",
+      "Bash(cargo build *)",
+      "Bash(go version *)",
+      "Bash(go install *)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "terraform"
+  ],
+  "enableAllProjectMcpServers": true
 }

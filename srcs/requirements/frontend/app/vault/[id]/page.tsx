@@ -5,8 +5,7 @@ import { useParams } from 'next/navigation'
 import { useWallets } from '@privy-io/react-auth'
 import { getVaultById } from '@/lib/store'
 import { Vault } from '@/types'
-import { getEngineRun, getMarketState } from '@/lib/engine/repositories'
-import { computeRunPnL } from '@/lib/engine/pnl'
+import { getEngineRun, getMarketState, getPnlSnapshots } from '@/lib/engine/repositories'
 import { CycleButton } from '@/components/cycle-button'
 import { ExpiryCountdown } from '@/components/expiry-countdown'
 import { InventoryCard } from '@/components/inventory-card'
@@ -14,7 +13,8 @@ import { PnLSparkline } from '@/components/pnl-sparkline'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import Link from 'next/link'
-import { TrendingUp, ChevronRight, Cpu } from 'lucide-react'
+import { TrendingUp, ChevronRight, Cpu, Wallet } from 'lucide-react'
+import { FundVaultDialog } from '@/components/fund-vault-dialog'
 import type { PnlSnapshot } from '@/lib/engine/types'
 
 function KpiCard({ label, value, sub, positive }: { label: string; value: string; sub?: string; positive?: boolean }) {
@@ -50,6 +50,7 @@ export default function VaultDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [enginePnl, setEnginePnl] = useState<PnlSnapshot | null>(null)
   const [engineState, setEngineState] = useState<string | null>(null)
+  const [showFundDialog, setShowFundDialog] = useState(false)
 
   const reload = useCallback(async () => {
     const v = await getVaultById(params.id)
@@ -59,8 +60,8 @@ export default function VaultDashboardPage() {
     const run = await getEngineRun(params.id)
     if (run) {
       setEngineState(run.currentState)
-      const pnl = await computeRunPnL(params.id)
-      setEnginePnl(pnl)
+      const snapshots = await getPnlSnapshots(params.id)
+      setEnginePnl(snapshots.length > 0 ? snapshots[snapshots.length - 1] : null)
     }
   }, [params.id])
 
@@ -108,8 +109,21 @@ export default function VaultDashboardPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowFundDialog(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-[#1A3C50] bg-[#0E1B27] px-3 py-1.5 text-xs text-[#00A8B5] hover:bg-[#1A3C50]"
+          >
+            <Wallet className="h-3.5 w-3.5" />
+            Fund
+          </button>
           <CycleButton vaultId={vault.id} onComplete={reload} />
         </div>
+        <FundVaultDialog
+          vaultId={vault.id}
+          isOpen={showFundDialog}
+          onClose={() => setShowFundDialog(false)}
+          wallet={wallets[0] ? { address: wallets[0].address, getEthereumProvider: () => wallets[0].getEthereumProvider() } : null}
+        />
       </div>
 
       {/* KPI Grid */}

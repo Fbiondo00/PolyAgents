@@ -184,6 +184,16 @@ Arc prediction market contracts were stripped after pivoting to Polymarket-nativ
 - **MCP tools**: All chain operations exposed via `@polyagents/mcp` for AI agent consumption
 - **Supabase queries**: All database operations in `@polyagents/sdk` → `modules/supabase/queries.ts`, using generated `Database` types from `@polyagents/schema`
 
+## Skills
+
+The following skills are installed in `.claude/skills/`. Consult their `SKILL.md` files when working on relevant tasks:
+
+- **grimoire-polymarket** — Polymarket CLOB API patterns (order placement, market discovery, WebSocket feeds). Use when implementing `poly-market` crate or any Polymarket trading logic.
+- **rust-async-patterns** — Tokio async runtime patterns, channel-based concurrency, stream processing. Use for all Rust async code in the engine crates.
+- **rust-best-practices** — Idiomatic Rust conventions, error handling (`thiserror`/`anyhow`), type design. Use for all Rust implementations.
+- **rust-mcp-server-generator** — MCP server scaffolding in Rust. Use when building the Rust MCP server to expose engine tools to OpenClaw.
+- **rust-engineer** — Trait design, ownership patterns, testing strategies. Use for `poly-engine` state machine and `MarketAdapter` trait.
+
 ## External APIs Referenced
 
 - **Polymarket Gamma API** (`https://gamma-api.polymarket.com`) — market discovery and search

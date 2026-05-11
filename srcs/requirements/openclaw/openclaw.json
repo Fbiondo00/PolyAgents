@@ -1,8 +1,7 @@
 {
   "mcpServers": {
     "polyagents": {
-      "command": "node",
-      "args": ["../mcp/dist/index.js"]
+      "command": "../engine/target/release/poly-mcp"
     }
   },
   "skills": [

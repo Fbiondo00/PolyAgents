@@ -5,15 +5,17 @@
 #   frontend  — Next.js 16 (Turbopack) on :3000
 #   supabase  — Local PostgreSQL + Studio on :54321
 
-.PHONY: all setup build stop start restart clean fclean re dev
+.PHONY: all setup build stop start restart clean fclean re dev \
+       engine-build engine-check engine-run engine-test engine-clean \
+       mcp-build mcp-run \
+       infra-init infra-plan infra-apply infra-destroy
 
 NAME = polyagents
 COMPOSE_FILE = srcs/docker-compose.yml
 REQS = srcs/requirements
 FRONTEND = $(REQS)/frontend
-SCHEMA = $(REQS)/schema
-SDK = $(REQS)/sdk
-MCP = $(REQS)/mcp
+ENGINE = $(REQS)/engine
+INFRA = infra/terraform
 
 GREEN = \033[0;32m
 RED = \033[0;31m
@@ -29,22 +31,15 @@ setup:
 	@printf "$(CYAN)Setting up environment...$(RESET)\n"
 	@if [ ! -f .env ]; then cp .env.example .env; printf "$(GREEN)Created .env from .env.example$(RESET)\n"; fi
 	@printf "$(CYAN)Installing dependencies...$(RESET)\n"
-	@cd $(SCHEMA) && npm install --silent
-	@cd $(SDK) && npm install --silent
 	@cd $(FRONTEND) && npm install --silent
-	@cd $(MCP) && npm install --silent
 	@printf "$(CYAN)Starting Supabase...$(RESET)\n"
 	@cd $(REQS)/supabase && supabase start 2>/dev/null || true
 
 # ── Build (packages in dependency order) ───────────────────────────────
 
 build:
-	@printf "$(GREEN)Building schema...$(RESET)\n"
-	@cd $(SCHEMA) && npm run build
-	@printf "$(GREEN)Building SDK...$(RESET)\n"
-	@cd $(SDK) && npm run build
-	@printf "$(GREEN)Building MCP server...$(RESET)\n"
-	@cd $(MCP) && npm run build
+	@printf "$(GREEN)Building Rust MCP server...$(RESET)\n"
+	@cd $(ENGINE) && cargo build --release -p poly-mcp
 	@printf "$(GREEN)Building frontend...$(RESET)\n"
 	@cd $(FRONTEND) && npm run build
 	@printf "$(GREEN)All packages built successfully.$(RESET)\n"
@@ -80,13 +75,61 @@ restart:
 
 clean:
 	@printf "$(RED)Cleaning build artifacts...$(RESET)\n"
-	@rm -rf $(SCHEMA)/dist $(SDK)/dist $(MCP)/dist $(FRONTEND)/.next
+	@rm -rf $(FRONTEND)/.next
 	@docker compose -f $(COMPOSE_FILE) down -v 2>/dev/null || true
 	@cd $(REQS)/supabase && supabase stop 2>/dev/null || true
 
 fclean: clean
 	@printf "$(RED)Deep cleaning...$(RESET)\n"
-	@rm -rf $(FRONTEND)/node_modules $(SCHEMA)/node_modules $(SDK)/node_modules $(MCP)/node_modules
+	@rm -rf $(FRONTEND)/node_modules
 	@docker system prune -af 2>/dev/null
 
 re: fclean all
+
+# ── Rust Engine ────────────────────────────────────────────────────────
+
+engine-check:
+	@printf "$(CYAN)Checking Rust engine...$(RESET)\n"
+	@cd $(ENGINE) && cargo check
+
+engine-build:
+	@printf "$(GREEN)Building Rust engine (release)...$(RESET)\n"
+	@cd $(ENGINE) && cargo build --release
+
+engine-run:
+	@printf "$(GREEN)Running Rust engine...$(RESET)\n"
+	@cd $(ENGINE) && cargo run --release
+
+engine-test:
+	@printf "$(CYAN)Running Rust tests...$(RESET)\n"
+	@cd $(ENGINE) && cargo test
+
+engine-clean:
+	@printf "$(RED)Cleaning Rust build artifacts...$(RESET)\n"
+	@cd $(ENGINE) && cargo clean
+
+mcp-build:
+	@printf "$(GREEN)Building poly-mcp MCP server (release)...$(RESET)\n"
+	@cd $(ENGINE) && cargo build --release -p poly-mcp
+
+mcp-run:
+	@printf "$(GREEN)Running poly-mcp MCP server...$(RESET)\n"
+	@cd $(ENGINE) && cargo run --release -p poly-mcp
+
+# ── Terraform (AWS infra) ─────────────────────────────────────────────
+
+infra-init:
+	@printf "$(CYAN)Initializing Terraform...$(RESET)\n"
+	@cd $(INFRA) && terraform init
+
+infra-plan:
+	@printf "$(CYAN)Planning infrastructure changes...$(RESET)\n"
+	@cd $(INFRA) && terraform plan
+
+infra-apply:
+	@printf "$(GREEN)Applying infrastructure...$(RESET)\n"
+	@cd $(INFRA) && terraform apply
+
+infra-destroy:
+	@printf "$(RED)Destroying infrastructure...$(RESET)\n"
+	@cd $(INFRA) && terraform destroy

@@ -2,9 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
-import { getVaultById, saveVault, updateVaultStats } from '@/lib/store'
+import { getVaultById, saveVault } from '@/lib/store'
 import { Vault } from '@/types'
-import { startEngine, stopEngine, getEngineStatus, runSingleCycle, fetchActiveMarket } from '@/actions/engine'
+import { startEngine, stopEngine, getEngineStatus, fetchActiveMarket } from '@/actions/engine'
 import type { EngineStatus } from '@/actions/engine'
 import type { ActiveMarketData } from '@/types/workflow'
 import { CycleButton } from '@/components/cycle-button'
@@ -116,51 +116,31 @@ export default function AgentPage() {
     if (!running || !vault) return
 
     intervalRef.current = setInterval(async () => {
-      const cycleResult = await runSingleCycle(vault.id)
-
-      // Update reasoning from AI decision
-      if (cycleResult.reasoning) {
-        setCurrentReasoning(cycleResult.reasoning)
-      }
-
-      // Update active market from cycle result
-      if (cycleResult.activeMarket) {
-        setActiveMarket(cycleResult.activeMarket)
-      }
-
-      // Update engine status
+      // Poll engine status from Rust engine
       const status = await getEngineStatus(vault.id)
       setEngineStatus(status)
 
-      const filled = cycleResult.fills > 0
-      const deltaPnl = cycleResult.pnl ?? 0
+      // Refresh active market data
+      const market = await fetchActiveMarket(vault.id)
+      if (market) setActiveMarket(market)
 
-      if (filled && deltaPnl > 0) {
-        toast.success(`Auto-fill: +${deltaPnl.toFixed(3)} USDC`)
+      // Refresh vault stats
+      const refreshed = await getVaultById(vault.id)
+      if (refreshed) setVault(refreshed)
+
+      // Build cycle log from status
+      if (status.state && status.state !== 'IDLE') {
+        const marketQ = market?.question?.slice(0, 35) ?? 'Unknown'
+        const isLive = market?.isLive ?? false
+        setCycleLogs(prev => [{
+          id: `cl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: Date.now(),
+          stages: ['Discover ✓', 'AI —', status.state ?? 'IDLE', isLive ? 'LIVE' : 'SIM'],
+          result: 'Running',
+          pnl: 0,
+          market: marketQ,
+        }, ...prev].slice(0, 30))
       }
-
-      // Sync vault stats
-      await updateVaultStats(vault.id, deltaPnl)
-      setVault(await getVaultById(vault.id))
-
-      // Build cycle log
-      const marketQ = cycleResult.activeMarket?.question?.slice(0, 35) ?? 'Unknown'
-      const isLive = cycleResult.activeMarket?.isLive ?? false
-      const stages = [
-        `Discover ✓`,
-        cycleResult.decision ? 'AI ✓' : 'AI —',
-        filled ? `${cycleResult.fills} fill(s)` : 'No fill',
-        isLive ? 'LIVE' : 'SIM',
-      ]
-
-      setCycleLogs(prev => [{
-        id: `cl-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        timestamp: Date.now(),
-        stages,
-        result: filled ? `+${deltaPnl.toFixed(3)} USDC` : 'No fill',
-        pnl: deltaPnl,
-        market: marketQ,
-      }, ...prev].slice(0, 30))
     }, 10000)
 
     return () => { if (intervalRef.current) clearInterval(intervalRef.current) }

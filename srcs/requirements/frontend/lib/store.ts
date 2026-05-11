@@ -1,56 +1,39 @@
 'use client'
 
 import { Vault, AuditEvent, DEMO_VAULT } from '@/types'
-import { supabase } from './supabase'
-import { supabaseQueries as q } from '@polyagents/sdk'
-import type { Tables } from '@polyagents/sdk'
-import {
-  dbToVault,
-  vaultToDb,
-  vaultPatchToDb,
-  auditEventToDb,
-  dbToAuditEvent,
-} from './db-mappers'
+import { engine } from './engine-api'
 
 export async function getVaults(): Promise<Vault[]> {
-  const rows = await q.getVaults(supabase)
-  return rows.map((row: Tables<"vaults">) => {
-    const vault = dbToVault(row)
-    return { ...vault, audit: [] } as Vault
-  })
+  const vaults = await engine.listVaults()
+  return vaults.map((v) => ({ ...v, audit: [] }) as Vault)
 }
 
 export async function getVaultById(id: string): Promise<Vault | null> {
   try {
-    const row = await q.getVaultById(supabase, id)
-    const auditRows = await q.getAuditEvents(supabase, id, 200)
-    const vault = dbToVault(row)
-    return { ...vault, audit: auditRows.map(dbToAuditEvent) } as Vault
+    const vault = await engine.getVault(id)
+    if (!vault) return null
+    const audit = await engine.getAuditEvents(id)
+    return { ...vault, audit } as Vault
   } catch {
     return null
   }
 }
 
 export async function saveVault(vault: Vault): Promise<void> {
-  try {
-    const existing = await q.getVaultById(supabase, vault.id)
-    if (existing) {
-      await q.updateVault(supabase, vault.id, vaultPatchToDb(vault))
-    } else {
-      await q.insertVault(supabase, vaultToDb(vault))
-    }
-  } catch {
-    // Insert on conflict (vault may already exist from another session)
-    await q.insertVault(supabase, vaultToDb(vault))
+  const existing = await engine.getVault(vault.id)
+  if (existing) {
+    await engine.updateVault(vault.id, vault)
+  } else {
+    await engine.createVault(vault)
   }
 }
 
 export async function deleteVault(id: string): Promise<void> {
-  await q.deleteVault(supabase, id)
+  await engine.deleteVault(id)
 }
 
-export async function addAuditEvent(vaultId: string, event: AuditEvent): Promise<void> {
-  await q.insertAuditEvent(supabase, auditEventToDb(vaultId, event))
+export async function addAuditEvent(_vaultId: string, _event: AuditEvent): Promise<void> {
+  // Audit events are written by the Rust engine — client-side stub
 }
 
 export async function initDemoVault(): Promise<Vault> {
@@ -67,12 +50,6 @@ export async function initDemoVault(): Promise<Vault> {
     },
   }
   await saveVault(demo)
-
-  // Seed demo audit events
-  for (const evt of demo.audit) {
-    await q.insertAuditEvent(supabase, auditEventToDb(demo.id, evt))
-  }
-
   return demo
 }
 

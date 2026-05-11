@@ -1,0 +1,21 @@
+[package]
+name = "poly-db"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+poly-types = { workspace = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "rust_decimal", "uuid"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+rust_decimal = { workspace = true }
+aes-gcm = "0.10"
+rand = "0.8"
+hex = "0.4"
+ethers-signers = "2"
+ethers-core = "2"

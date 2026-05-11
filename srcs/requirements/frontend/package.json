@@ -11,8 +11,6 @@
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.88",
     "@hookform/resolvers": "^3.9.1",
-    "@polyagents/schema": "file:../schema",
-    "@polyagents/sdk": "file:../sdk",
     "@polymarket/clob-client": "^5.8.1",
     "@privy-io/react-auth": "^3.19.0",
     "@radix-ui/react-accordion": "1.2.12",

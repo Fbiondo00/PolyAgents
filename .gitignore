@@ -20,6 +20,13 @@ tsconfig.tsbuildinfo
 # Server-side vault registry (runtime data)
 .vault-registry.json
 
+# Rust build artifacts
+target/
+
+# Terraform provider/plugin cache
+.terraform/
+.terraform.lock.hcl
+
 # Package build artifacts
 srcs/requirements/*/dist/
 srcs/requirements/*/node_modules/

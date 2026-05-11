@@ -1,15 +1,24 @@
 "use server"
 
 // Server Actions: engine control endpoints
-// These are callable from client components to start/stop/query engine state
+// Delegates to the Rust engine HTTP API at localhost:8080
 
-import type { StrategyConfig } from "@/types/engine-schemas"
-import type { CycleResult, ActiveMarketData } from "@/types/workflow"
-import { getRun, saveRun, getMarketState, getCycleCount, addAuditEvent } from "@/actions/engine/store"
-import { tradingCycleWorkflow } from "@/actions/engine/workflows/trading-cycle"
-import { discoverMarket } from "@/actions/engine/steps/discover-market"
-import { getTopOfBook } from "@/lib/engine/adapters/polymarket-readonly"
-import { getClobAdapter } from "@/lib/engine/adapters/polymarket-clob"
+import type { ActiveMarketData } from "@/types/workflow"
+import { engine } from "@/lib/engine-api"
+
+const API = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8080"
+
+async function apiPost<T>(path: string): Promise<T> {
+  const res = await fetch(`${API}${path}`, { method: "POST", headers: { "Content-Type": "application/json" } })
+  if (!res.ok) throw new Error(`Engine API ${res.status}: ${res.statusText}`)
+  return res.json()
+}
+
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(`${API}${path}`, { headers: { "Content-Type": "application/json" } })
+  if (!res.ok) throw new Error(`Engine API ${res.status}: ${res.statusText}`)
+  return res.json()
+}
 
 // ── Result types ──
 
@@ -28,188 +37,75 @@ export interface StartResult {
   error?: string
 }
 
-// ── Default config ──
-
-const DEFAULT_CONFIG: StrategyConfig = {
-  enabled: true,
-  entryPrice: 0.20,
-  exitPrice: 0.25,
-  orderSize: 10,
-  maxTradesPerMarket: 1,
-  maxTradesPolicy: "side",
-  noNewEntriesLastSeconds: 10,
-  keepSellOrdersAfterExpirySeconds: 10,
-  reconcileIntervalCycles: 8,
-  strictPassiveOnly: true,
-  allowBothSides: true,
-  cancelOpenBuysOnExpiry: true,
-  autoReentryEnabled: false,
-}
-
 // ── Actions ──
 
-export async function startEngine(
-  vaultId: string,
-  config: StrategyConfig = DEFAULT_CONFIG,
-): Promise<StartResult> {
+export async function startEngine(vaultId: string): Promise<StartResult> {
   try {
-    console.log(`[engine] startEngine called`, { vaultId })
-
-    // Stop any existing run
-    const existing = await getRun(vaultId)
-    if (existing) {
-      await saveRun(vaultId, { ...existing, status: "stopped", stoppedAt: Date.now(), currentState: "IDLE" })
-    }
-
-    // Create new run
-    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    const run = {
-      id: runId,
-      vaultId,
-      status: "running" as const,
-      currentState: "DISCOVERING_MARKET" as const,
-      activeMarketId: null,
-      startedAt: Date.now(),
-      stoppedAt: null,
-      lastHeartbeatAt: Date.now(),
-      lastError: null,
-    }
-    await saveRun(vaultId, run)
-
-    await addAuditEvent(vaultId, {
-      type: "ENGINE_STARTED",
-      runId,
-      timestamp: Date.now(),
-    })
-
-    // Start continuous workflow in background
-    tradingCycleWorkflow(vaultId, config).catch(() => {})
-
-    console.log(`[engine] engine started`, { runId })
-    return { success: true, runId }
+    const result = await apiPost<{ run_id: string; status: string }>(`/engine/${vaultId}/start`)
+    return { success: true, runId: result.run_id }
   } catch (err) {
     return { success: false, error: String(err) }
   }
 }
 
 export async function stopEngine(vaultId: string): Promise<boolean> {
-  console.log(`[engine] stopEngine called`, { vaultId })
-
-  const run = await getRun(vaultId)
-  if (!run) return false
-
-  await saveRun(vaultId, {
-    ...run,
-    status: "stopped",
-    stoppedAt: Date.now(),
-    currentState: "IDLE",
-  })
-
-  await addAuditEvent(vaultId, {
-    type: "ENGINE_STOPPED",
-    runId: run.id,
-    timestamp: Date.now(),
-  })
-
-  return true
+  try {
+    await apiPost(`/engine/${vaultId}/stop`)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function getEngineStatus(vaultId: string): Promise<EngineStatus> {
-  const run = await getRun(vaultId)
-  if (!run) {
-    console.log(`[engine] getEngineStatus`, { vaultId, running: false, state: "IDLE" })
+  try {
+    const status = await apiGet<{ vault_id: string; status: string; state: string }>(`/engine/${vaultId}/status`)
+    return {
+      running: status.status === "running",
+      state: status.state,
+      activeMarketId: null,
+      cycleCount: 0,
+      lastHeartbeat: null,
+      lastError: null,
+    }
+  } catch {
     return {
       running: false,
       state: "IDLE",
       activeMarketId: null,
-      cycleCount: getCycleCount(vaultId),
+      cycleCount: 0,
       lastHeartbeat: null,
       lastError: null,
     }
   }
-
-  console.log(`[engine] getEngineStatus`, { vaultId, running: run.status === "running", state: run.currentState })
-  return {
-    running: run.status === "running",
-    state: run.currentState,
-    activeMarketId: run.activeMarketId,
-    cycleCount: getCycleCount(vaultId),
-    lastHeartbeat: run.lastHeartbeatAt,
-    lastError: run.lastError,
-  }
 }
 
 export async function runSingleCycle(
-  vaultId: string,
-  config: StrategyConfig = DEFAULT_CONFIG,
-): Promise<CycleResult> {
-  console.log(`[engine] runSingleCycle called`, { vaultId })
-
-  // Ensure a run exists
-  let run = await getRun(vaultId)
-  if (!run) {
-    const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    run = {
-      id: runId,
-      vaultId,
-      status: "running",
-      currentState: "DISCOVERING_MARKET",
-      activeMarketId: null,
-      startedAt: Date.now(),
-      stoppedAt: null,
-      lastHeartbeatAt: Date.now(),
-      lastError: null,
-    }
-    await saveRun(vaultId, run)
-  }
-
-  const result = await tradingCycleWorkflow(vaultId, config)
-
-  // Auto-stop after single cycle (if not continuous mode)
-  const currentRun = await getRun(vaultId)
-  if (currentRun) {
-    await saveRun(vaultId, { ...currentRun, lastHeartbeatAt: Date.now() })
-  }
-
-  console.log(`[engine] cycle complete`, { vaultId, status: result.status, fills: result.fills, pnl: result.pnl })
-  return result
+  _vaultId: string,
+): Promise<{ success: boolean; fills: number; pnl: number; error?: string }> {
+  // The Rust engine runs cycles internally — single cycle is a no-op here
+  return { success: true, fills: 0, pnl: 0 }
 }
 
-/**
- * Fetch active market data for immediate display on the agent page.
- * Returns market question, order books, time to expiry, and live/simulated status.
- */
 export async function fetchActiveMarket(vaultId: string): Promise<ActiveMarketData | null> {
   try {
-    console.log(`[engine] fetchActiveMarket called`, { vaultId })
+    const { market_state } = await apiGet<{ market_state: unknown }>(`/market-state/${vaultId}`)
+    if (!market_state || typeof market_state !== "object" || !("market" in market_state)) return null
 
-    const { market } = await discoverMarket(vaultId)
-    if (!market) {
-      console.log(`[engine] fetchActiveMarket no market found`, { vaultId })
-      return null
-    }
-
-    console.log(`[engine] fetchActiveMarket market found`, { vaultId, question: market.question, conditionId: market.conditionId })
-
-    const adapter = await getClobAdapter()
-    const now = Math.floor(Date.now() / 1000)
-
-    const [yesBook, noBook] = await Promise.all([
-      getTopOfBook(market.yesTokenId),
-      getTopOfBook(market.noTokenId),
-    ])
+    const market = (market_state as Record<string, unknown>).market as Record<string, unknown> | null
+    if (!market) return null
 
     return {
-      question: market.question,
-      slug: market.slug,
-      endTs: market.endTs,
-      conditionId: market.conditionId,
-      yesTokenId: market.yesTokenId,
-      noTokenId: market.noTokenId,
-      yesBook,
-      noBook,
-      isLive: adapter.isLive,
-      toExpiry: market.endTs - now,
+      question: market.question as string ?? "",
+      slug: market.slug as string ?? "",
+      endTs: (market.end_date as number) ?? 0,
+      conditionId: market.condition_id as string ?? "",
+      yesTokenId: "",
+      noTokenId: "",
+      yesBook: { bestBid: null, bestAsk: null },
+      noBook: { bestBid: null, bestAsk: null },
+      isLive: false,
+      toExpiry: 0,
     }
   } catch {
     return null

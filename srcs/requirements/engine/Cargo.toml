@@ -1,0 +1,66 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/poly-types",
+    "crates/poly-db",
+    "crates/poly-market",
+    "crates/poly-ai",
+    "crates/poly-engine",
+    "crates/poly-mcp",
+    ".",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = { version = "1", features = ["serde"] }
+thiserror = "2"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Workspace crates
+poly-types = { path = "crates/poly-types" }
+poly-db = { path = "crates/poly-db" }
+poly-market = { path = "crates/poly-market" }
+poly-ai = { path = "crates/poly-ai" }
+poly-engine = { path = "crates/poly-engine" }
+poly-mcp = { path = "crates/poly-mcp" }
+
+# MCP server deps
+rmcp = { version = "0.8.1", features = ["server", "transport-io"] }
+schemars = "1"
+
+[package]
+name = "polyagents-engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+poly-types.workspace = true
+poly-db.workspace = true
+poly-market.workspace = true
+poly-ai.workspace = true
+poly-engine.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "json", "chrono", "rust_decimal", "uuid"] }
+reqwest.workspace = true
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+clap = { version = "4", features = ["derive"] }
