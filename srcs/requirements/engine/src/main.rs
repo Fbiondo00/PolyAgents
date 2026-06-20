@@ -40,44 +40,13 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let database_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/postgres".into());
-
-    let config = AppConfig {
-        database_url: database_url.clone(),
-        polymarket: poly_types::config::PolymarketConfig {
-            api_key: std::env::var("POLYMARKET_API_KEY").unwrap_or_default(),
-            api_secret: std::env::var("POLYMARKET_API_SECRET").unwrap_or_default(),
-            api_passphrase: std::env::var("POLYMARKET_API_PASSPHRASE").unwrap_or_default(),
-            private_key: std::env::var("POLYMARKET_PRIVATE_KEY").unwrap_or_default(),
-            funder_private_key: std::env::var("POLYMARKET_FUNDER_PRIVATE_KEY").unwrap_or_default(),
-            live: std::env::var("POLYMARKET_LIVE").unwrap_or_default().parse().unwrap_or(false),
-            chain_id: std::env::var("POLYMARKET_CHAIN_ID")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(137),
-        },
-        ai: poly_types::config::AiConfig {
-            api_base: std::env::var("OPENAI_API_BASE")
-                .unwrap_or_else(|_| "https://openai.craftshost.com".into()),
-            api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
-            public_key: std::env::var("OPENAI_PUBLIC_KEY").ok(),
-            model: std::env::var("OPENAI_MODEL")
-                .unwrap_or_else(|_| "gemma4-fast:latest".into()),
-            max_tokens: std::env::var("OPENAI_MAX_TOKENS")
-                .unwrap_or_else(|_| "1024".into())
-                .parse()?,
-        },
-        server: poly_types::config::ServerConfig {
-            host: cli.host.clone(),
-            port: cli.port,
-        },
-        vault_encryption_key: std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_default(),
-        polygon_rpc_url: std::env::var("POLYGON_RPC_URL")
-            .unwrap_or_else(|_| "https://polygon-rpc.com".into()),
-        polygon_usdc_address: std::env::var("POLYGON_USDC_ADDRESS")
-            .unwrap_or_else(|_| "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359".into()),
+    let mut config = AppConfig::from_env()?;
+    // `from_env()` supplies default server settings; let clap override them.
+    config.server = poly_types::config::ServerConfig {
+        host: cli.host.clone(),
+        port: cli.port,
     };
+    let database_url = config.database_url.clone();
 
     tracing::info!("Connecting to database...");
     let pool = create_pool(&database_url).await?;
@@ -94,22 +63,22 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/vaults", get(list_vaults).post(create_vault))
-        .route("/vaults/:id", get(get_vault).put(update_vault).delete(delete_vault))
-        .route("/vaults/:id/config", get(get_config).put(update_config))
-        .route("/vaults/:id/agent-address", get(get_agent_address))
-        .route("/vaults/:id/balance", get(get_balance))
-        .route("/vaults/:id/withdraw", post(withdraw))
-        .route("/engine/:vault_id/start", post(start_engine))
-        .route("/engine/:vault_id/stop", post(stop_engine))
-        .route("/engine/:vault_id/status", get(engine_status))
-        .route("/engine/:vault_id/cancel-orders", post(cancel_orders))
+        .route("/vaults/{id}", get(get_vault).put(update_vault).delete(delete_vault))
+        .route("/vaults/{id}/config", get(get_config).put(update_config))
+        .route("/vaults/{id}/agent-address", get(get_agent_address))
+        .route("/vaults/{id}/balance", get(get_balance))
+        .route("/vaults/{id}/withdraw", post(withdraw))
+        .route("/engine/{vault_id}/start", post(start_engine))
+        .route("/engine/{vault_id}/stop", post(stop_engine))
+        .route("/engine/{vault_id}/status", get(engine_status))
+        .route("/engine/{vault_id}/cancel-orders", post(cancel_orders))
         .route("/engine/active", get(active_engines))
-        .route("/engine-runs/:vault_id", get(get_engine_run))
-        .route("/orders/:vault_id", get(get_orders))
-        .route("/pnl/:vault_id", get(get_pnl))
-        .route("/audit/:vault_id", get(get_audit))
-        .route("/market-state/:vault_id", get(get_market_state))
-        .route("/books/:vault_id", get(get_books))
+        .route("/engine-runs/{vault_id}", get(get_engine_run))
+        .route("/orders/{vault_id}", get(get_orders))
+        .route("/pnl/{vault_id}", get(get_pnl))
+        .route("/audit/{vault_id}", get(get_audit))
+        .route("/market-state/{vault_id}", get(get_market_state))
+        .route("/books/{vault_id}", get(get_books))
         .layer(CorsLayer::permissive())
         .with_state(engine.clone());
 
@@ -198,13 +167,6 @@ async fn create_vault(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    poly_db::keypairs::insert(pool, &vault_id, &encrypted, &public_address, &salt)
-        .await
-        .map_err(|e| {
-            tracing::error!("Keypair insert error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
     let vault = poly_types::vault::Vault {
         id: vault_id.clone(),
         name: body["name"].as_str().unwrap_or("New Vault").into(),
@@ -220,13 +182,23 @@ async fn create_vault(
         created: chrono::Utc::now().timestamp_millis(),
     };
 
-    match poly_db::vaults::insert(pool, &vault).await {
-        Ok(_) => Ok(Json(json!({ "vault": vault, "agent_address": public_address }))),
-        Err(e) => {
+    // Insert the vault row BEFORE its keypair: vault_keypairs.vault_id has an FK
+    // back to vaults.id, so inserting the keypair first violates the constraint.
+    poly_db::vaults::insert(pool, &vault)
+        .await
+        .map_err(|e| {
             tracing::error!("Create vault error: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    poly_db::keypairs::insert(pool, &vault_id, &encrypted, &public_address, &salt)
+        .await
+        .map_err(|e| {
+            tracing::error!("Keypair insert error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(json!({ "vault": vault, "agent_address": public_address })))
 }
 
 async fn start_engine(

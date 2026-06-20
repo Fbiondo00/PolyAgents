@@ -1,26 +1,15 @@
 use anyhow::Result;
 use reqwest::Client;
 
-use poly_types::ai::{AiRequest, AiResponse, BidPrices, SideBias, TradingDecision};
+use poly_types::ai::{AiRequest, AiResponse, TradingDecision};
 use poly_types::config::AiConfig;
 use poly_types::market::{Market, OrderBook};
 
 const MAX_RETRIES: u32 = 3;
-const TIMEOUT_SECS: u64 = 10;
-
-fn default_decision() -> TradingDecision {
-    TradingDecision {
-        side_bias: SideBias::Neutral,
-        confidence: 0.0,
-        bid_prices: BidPrices {
-            yes_price: rust_decimal::Decimal::new(1, 2), // 0.01
-            no_price: rust_decimal::Decimal::new(1, 2),
-            yes_size: rust_decimal::Decimal::from(10),
-            no_size: rust_decimal::Decimal::from(10),
-        },
-        reasoning: "AI unavailable, using neutral defaults".into(),
-    }
-}
+// Reasoning models behind a timed proxy can take a while (and the Langfuse/
+// Cloudflare edge has been observed to intermittently reject long-held requests);
+// give each attempt generous headroom. The 3-retry loop still bounds total time.
+const TIMEOUT_SECS: u64 = 60;
 
 pub struct AiClient {
     http: Client,
@@ -50,11 +39,11 @@ impl AiClient {
             messages: vec![
                 poly_types::ai::AiMessage {
                     role: "system".into(),
-                    content: crate::prompt::SYSTEM_PROMPT.into(),
+                    content: Some(crate::prompt::SYSTEM_PROMPT.into()),
                 },
                 poly_types::ai::AiMessage {
                     role: "user".into(),
-                    content: prompt,
+                    content: Some(prompt),
                 },
             ],
             max_tokens: self.config.max_tokens,
@@ -74,9 +63,12 @@ impl AiClient {
             }
         }
 
-        // All retries exhausted — return safe neutral defaults
+        // All retries exhausted — return safe neutral defaults.
         tracing::warn!("All AI retries exhausted, using neutral fallback");
-        Ok(default_decision())
+        Ok(TradingDecision {
+            reasoning: "AI unavailable, using neutral defaults".into(),
+            ..TradingDecision::default()
+        })
     }
 
     async fn call_api(&self, request: &AiRequest) -> Result<TradingDecision> {
@@ -86,8 +78,10 @@ impl AiClient {
             .header("Authorization", format!("Bearer {}", self.config.api_key))
             .json(request);
 
-        // Langfuse-routed gateways (e.g. Craftshost) require the public key header too.
-        if let Some(pk) = &self.config.public_key {
+        // Langfuse-routed gateways (e.g. Craftshost) require the public key header
+        // too. Gate it on a non-empty value so an unset/blank OPENAI_PUBLIC_KEY
+        // doesn't send a header that would cause every call to be rejected.
+        if let Some(pk) = self.config.public_key.as_deref().filter(|s| !s.is_empty()) {
             req = req.header("X-Langfuse-Public-Key", pk);
         }
 
@@ -98,11 +92,22 @@ impl AiClient {
             .json::<AiResponse>()
             .await?;
 
-        let content = resp
+        let choice = resp
             .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .ok_or_else(|| anyhow::anyhow!("No response from AI"))?;
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("AI returned no choices"))?;
+
+        let content = choice.message.content.unwrap_or_default();
+        if content.trim().is_empty() {
+            // Distinct error so logs reveal token-exhaustion / empty-content cases
+            // (common with reasoning models that spent the budget on chain-of-thought)
+            // instead of surfacing as a generic JSON parse error downstream.
+            return Err(anyhow::anyhow!(
+                "AI returned empty content (finish_reason={:?})",
+                choice.finish_reason
+            ));
+        }
 
         parse_decision(&content)
     }
