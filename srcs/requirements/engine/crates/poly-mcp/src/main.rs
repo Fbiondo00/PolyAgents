@@ -49,9 +49,10 @@ async fn main() -> Result<()> {
         },
         ai: poly_types::config::AiConfig {
             api_base: std::env::var("OPENAI_API_BASE")
-                .unwrap_or_else(|_| "https://openai.pezserv.org".into()),
+                .unwrap_or_else(|_| "https://openai.craftshost.com".into()),
             api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
-            model: std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o".into()),
+            public_key: std::env::var("OPENAI_PUBLIC_KEY").ok(),
+            model: std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gemma4-fast:latest".into()),
             max_tokens: std::env::var("OPENAI_MAX_TOKENS")
                 .unwrap_or_else(|_| "1024".into())
                 .parse()?,
@@ -60,6 +61,11 @@ async fn main() -> Result<()> {
             host: "0.0.0.0".into(),
             port: 8080,
         },
+        vault_encryption_key: std::env::var("VAULT_ENCRYPTION_KEY").unwrap_or_default(),
+        polygon_rpc_url: std::env::var("POLYGON_RPC_URL")
+            .unwrap_or_else(|_| "https://polygon-rpc.com".into()),
+        polygon_usdc_address: std::env::var("POLYGON_USDC_ADDRESS")
+            .unwrap_or_else(|_| "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359".into()),
     };
 
     tracing::info!("Connecting to database...");

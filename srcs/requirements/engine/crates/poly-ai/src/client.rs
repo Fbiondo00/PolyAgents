@@ -80,11 +80,18 @@ impl AiClient {
     }
 
     async fn call_api(&self, request: &AiRequest) -> Result<TradingDecision> {
-        let resp = self
+        let mut req = self
             .http
             .post(format!("{}/v1/chat/completions", self.config.api_base))
             .header("Authorization", format!("Bearer {}", self.config.api_key))
-            .json(request)
+            .json(request);
+
+        // Langfuse-routed gateways (e.g. Craftshost) require the public key header too.
+        if let Some(pk) = &self.config.public_key {
+            req = req.header("X-Langfuse-Public-Key", pk);
+        }
+
+        let resp = req
             .send()
             .await?
             .error_for_status()?

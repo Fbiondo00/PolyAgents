@@ -26,6 +26,10 @@ pub struct PolymarketConfig {
 pub struct AiConfig {
     pub api_base: String,
     pub api_key: String,
+    /// Optional public key for gateways that require it (e.g. Langfuse-routed Craftshost,
+    /// which expects an `X-Langfuse-Public-Key` header alongside the bearer secret key).
+    #[serde(default)]
+    pub public_key: Option<String>,
     pub model: String,
     pub max_tokens: u32,
 }

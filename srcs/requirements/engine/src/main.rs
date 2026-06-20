@@ -59,10 +59,11 @@ async fn main() -> Result<()> {
         },
         ai: poly_types::config::AiConfig {
             api_base: std::env::var("OPENAI_API_BASE")
-                .unwrap_or_else(|_| "https://openai.pezserv.org".into()),
+                .unwrap_or_else(|_| "https://openai.craftshost.com".into()),
             api_key: std::env::var("OPENAI_API_KEY").unwrap_or_default(),
+            public_key: std::env::var("OPENAI_PUBLIC_KEY").ok(),
             model: std::env::var("OPENAI_MODEL")
-                .unwrap_or_else(|_| "gpt-4o".into()),
+                .unwrap_or_else(|_| "gemma4-fast:latest".into()),
             max_tokens: std::env::var("OPENAI_MAX_TOKENS")
                 .unwrap_or_else(|_| "1024".into())
                 .parse()?,
