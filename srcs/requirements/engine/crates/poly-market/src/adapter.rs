@@ -55,6 +55,14 @@ impl MarketAdapter for PolymarketAdapter {
     async fn cancel_order(&self, order_id: &str) -> Result<()> {
         self.clob.cancel_order(order_id).await
     }
+
+    async fn get_market(&self, condition_id: &str) -> Result<Market> {
+        self.gamma.get_market(condition_id).await
+    }
+
+    async fn get_order(&self, order_id: &str) -> Result<crate::clob::OrderState> {
+        self.clob.get_order(order_id).await
+    }
 }
 
 #[async_trait]
@@ -68,4 +76,6 @@ pub trait MarketAdapter: Send + Sync {
     async fn place_order(&self, order: NewOrder) -> Result<OrderResult>;
     async fn place_order_with_key(&self, order: NewOrder, private_key: &str) -> Result<OrderResult>;
     async fn cancel_order(&self, order_id: &str) -> Result<()>;
+    async fn get_market(&self, condition_id: &str) -> Result<Market>;
+    async fn get_order(&self, order_id: &str) -> Result<crate::clob::OrderState>;
 }

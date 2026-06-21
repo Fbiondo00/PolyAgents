@@ -9,7 +9,8 @@ use poly_types::config::AppConfig;
 use poly_types::engine::{EngineRun, EngineRunStatus, EngineState};
 use poly_types::vault::{StrategyConfig, Vault};
 
-use crate::cycle::CycleRunner;
+use crate::cycle::{CycleDecision, CycleRunner};
+use crate::reconcile::Reconciler;
 
 /// Default cycle interval for 5-minute markets (seconds)
 const DEFAULT_CYCLE_INTERVAL_SECS: u64 = 5;
@@ -36,6 +37,18 @@ impl TradingEngine {
             ai: Arc::new(ai),
             runs: Arc::new(RwLock::new(Vec::new())),
         }
+    }
+
+    /// Spawn the lagged reconciliation loop. Close out OPEN trade outcomes
+    /// (fill + PnL) once their markets resolve. Safe to call once at startup;
+    /// the loop runs for the process lifetime and sweeps on a slow timer.
+    pub fn spawn_reconciler(&self) {
+        Reconciler::new(
+            self.config.clone(),
+            self.pool.clone(),
+            self.market.clone(),
+        )
+        .spawn();
     }
 
     pub async fn start_vault(&self, vault_id: &str) -> Result<String> {
@@ -133,6 +146,9 @@ impl TradingEngine {
 
         let cycle_interval = DEFAULT_CYCLE_INTERVAL_SECS;
         let mut state = EngineState::Idle;
+        // Decision carried from DiscoveringMarket into Quoting so the full
+        // discover→decide→place flow runs exactly once per loop, not twice.
+        let mut pending: Option<CycleDecision> = None;
 
         loop {
             // Check if still running
@@ -147,7 +163,9 @@ impl TradingEngine {
                 break;
             }
 
-            state = self.transition_state(&runner, state, strategy).await;
+            state = self
+                .transition_state(&runner, state, strategy, &mut pending, vault)
+                .await;
 
             // Update current state in memory
             let mut runs = self.runs.write().await;
@@ -168,11 +186,16 @@ impl TradingEngine {
     }
 
     /// Execute one state transition and return the next state.
+    ///
+    /// `pending` carries the `CycleDecision` from `DiscoveringMarket` into
+    /// `Quoting` so the discover→decide→place flow runs once, not twice.
     async fn transition_state(
         &self,
         runner: &CycleRunner<'_>,
         current: EngineState,
         strategy: &StrategyConfig,
+        pending: &mut Option<CycleDecision>,
+        vault: &Vault,
     ) -> EngineState {
         match current {
             EngineState::Idle => {
@@ -182,10 +205,10 @@ impl TradingEngine {
 
             EngineState::DiscoveringMarket => {
                 tracing::debug!(state = "DiscoveringMarket", "Searching for active BTC 5-min market");
-                // The cycle runner handles discovery internally
-                match runner.run_cycle().await {
-                    Ok(()) => {
+                match runner.discover().await {
+                    Ok(decision) => {
                         tracing::info!(state = "DiscoveringMarket", "Market found, transitioning → Ready");
+                        *pending = Some(decision);
                         EngineState::Ready
                     }
                     Err(e) => {
@@ -196,27 +219,32 @@ impl TradingEngine {
             }
 
             EngineState::Ready => {
-                tracing::info!(state = "Ready", "Subscribing to order book, transitioning → Quoting");
+                tracing::info!(state = "Ready", "Transitioning → Quoting");
                 EngineState::Quoting
             }
 
             EngineState::Quoting => {
                 tracing::debug!(state = "Quoting", "Placing passive bids on both sides");
 
-                // Risk check before quoting
                 if !strategy.enabled {
                     tracing::warn!(state = "Quoting", "Strategy disabled, skipping");
+                    *pending = None;
                     return EngineState::Idle;
                 }
 
-                // Run the quoting cycle (place orders via runner)
-                match runner.run_cycle().await {
+                let Some(mut decision) = pending.take() else {
+                    tracing::warn!(state = "Quoting", "No pending decision, back to DiscoveringMarket");
+                    return EngineState::DiscoveringMarket;
+                };
+
+                match runner.quote(&mut decision).await {
                     Ok(()) => {
                         tracing::info!(state = "Quoting", "Orders placed, transitioning → HoldingInventory");
                         EngineState::HoldingInventory
                     }
                     Err(e) => {
                         tracing::warn!(state = "Quoting", error = %e, "Quoting failed, back to Ready");
+                        *pending = Some(decision);
                         EngineState::Ready
                     }
                 }
@@ -224,9 +252,8 @@ impl TradingEngine {
 
             EngineState::HoldingInventory => {
                 tracing::debug!(state = "HoldingInventory", "Monitoring fills and market expiry");
-
-                // Check if we should enter expiry guard
-                // For now, transition after one tick — in production this checks fills via WS
+                // Fill monitoring is the reconciler's job (Phase 1b); here we
+                // only decide whether to run the expiry guard before rolling over.
                 if strategy.cancel_open_buys_on_expiry {
                     EngineState::ExpiryGuard
                 } else {
@@ -236,8 +263,10 @@ impl TradingEngine {
 
             EngineState::ExpiryGuard => {
                 tracing::info!(state = "ExpiryGuard", "Cancelling open buy orders near expiry");
-                // In production: cancel all open buy orders for the current market
-                // The runner's cycle handles this via risk.should_cancel_at_expiry()
+                match poly_db::orders::cancel_by_vault(&self.pool, &vault.id).await {
+                    Ok(n) => tracing::info!(state = "ExpiryGuard", cancelled = n, "Cancelled open orders"),
+                    Err(e) => tracing::warn!(state = "ExpiryGuard", error = %e, "Cancel failed"),
+                }
                 EngineState::RollingOver
             }
 
@@ -247,15 +276,10 @@ impl TradingEngine {
             }
 
             EngineState::Reconciling => {
-                tracing::info!(state = "Reconciling", "Computing PnL snapshot");
-
-                // Check drawdown guard
-                if let Err(e) = crate::risk::RiskEngine::check_drawdown(0.0, strategy.max_drawdown_usdc as f64) {
-                    tracing::error!(state = "Reconciling", error = %e, "Max drawdown exceeded, stopping engine");
-                    return EngineState::Idle;
-                }
-
-                tracing::info!(state = "Reconciling", "Cycle reconciled, transitioning → Idle");
+                // Per-vault PnL and drawdown are computed by the reconciler
+                // (Phase 1b) from realized trade outcomes, not here. The SM
+                // reconcile tick is a no-op pass-through until that lands.
+                tracing::info!(state = "Reconciling", "Transitioning → Idle");
                 EngineState::Idle
             }
         }

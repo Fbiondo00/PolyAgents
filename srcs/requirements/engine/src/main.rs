@@ -60,6 +60,10 @@ async fn main() -> Result<()> {
 
     let engine = Arc::new(TradingEngine::new(config, pool, market, ai));
 
+    // Spawn the reconciliation loop: closes out OPEN trade outcomes (fills +
+    // PnL) once their markets resolve. Runs for the process lifetime.
+    engine.spawn_reconciler();
+
     let app = Router::new()
         .route("/health", get(health))
         .route("/vaults", get(list_vaults).post(create_vault))

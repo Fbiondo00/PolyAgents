@@ -8,6 +8,7 @@ pub mod pnl;
 pub mod audit;
 pub mod books;
 pub mod keypairs;
+pub mod outcomes;
 
 pub use pool::create_pool;
 pub use sqlx::PgPool;

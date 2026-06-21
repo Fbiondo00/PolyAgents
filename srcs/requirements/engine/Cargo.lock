@@ -2204,6 +2204,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "sqlx",
  "thiserror 2.0.18",
  "tokio",
  "tracing",

@@ -272,6 +272,23 @@ impl PolyMcpServer {
         }
     }
 
+    #[tool(description = "Recent decision-to-outcome pairs for a vault, newest first — the learning signal.
+Each item joins an AI trading decision to what actually happened: the decision context (side bias, confidence, reasoning, decision_inputs), the YES/NO orders placed, whether they filled, the market resolution (winning_side), and realized PnL. Unreconciled (still-open) outcomes are included with null result fields. Use this to learn which decisions made or lost money.")]
+    async fn get_recent_outcomes(
+        &self,
+        Parameters(VaultLimitParams { vault_id, limit }): Parameters<VaultLimitParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let pool = self.state.engine.pool();
+        let limit = limit.unwrap_or(50) as i64;
+        match poly_db::outcomes::get_recent(pool, &vault_id, limit).await {
+            Ok(outcomes) => json_result(serde_json::json!({ "outcomes": outcomes })),
+            Err(e) => Err(McpError::internal_error(
+                "get_recent_outcomes_failed",
+                Some(serde_json::json!({ "error": e.to_string() })),
+            )),
+        }
+    }
+
     #[tool(description = "Get PnL history snapshots for a vault.")]
     async fn get_pnl(
         &self,
