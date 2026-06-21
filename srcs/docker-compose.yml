@@ -1,48 +1,145 @@
-# PolyAgents — ETHGlobal Cannes 2026
-# AI-powered autonomous trading vault for Polymarket BTC 5-minute markets
+# PolyAgents — production docker-compose
 #
 # Services:
-#   frontend  — Next.js 16 app (Turbopack) on :3000
-#   supabase  — PostgreSQL + PostgREST + GoTrue + Studio (local Supabase)
+#   db       — PostgreSQL 15 (supabase/postgres image), persisted volume
+#   engine   — Rust axum HTTP API + trading state machine + reconciler (:8080)
+#   frontend — Next.js 16 standalone (:3000)
+#   mcp      — poly-mcp over stdio (optional profile; launched by OpenClaw on the host)
+#
+# The engine applies SQL migrations on boot (sqlx::migrate! baked in), so the
+# db needs no init-script volume. All secrets come from the root .env file
+# (gitignored) via env_file — nothing is baked into the images.
+#
+# Usage (from the repo root, where .env lives):
+#   cp .env.example .env   # then fill in real values (incl. all NEXT_PUBLIC_*)
+#   docker compose -f srcs/docker-compose.yml up --build -d
+#   docker compose -f srcs/docker-compose.yml logs -f engine
+#
+# Local DB debugging (exposes Postgres on localhost:5432 — NOT for prod):
+#   docker compose -f srcs/docker-compose.yml -f srcs/docker-compose.db-port.yml up
+#
+# OpenClaw (runs on the host) talks to the engine stack via this compose by
+# spawning the MCP server in its own container — see the `mcp` profile + the
+# note at the bottom.
 
 services:
-  # ── Frontend (Next.js 16) ────────────────────────────────────────────
+  # ── Database ──────────────────────────────────────────────────────────
+  # Official Postgres 15. The migrations are plain SQL (sqlx::migrate!, applied
+  # by the engine on boot) with no Supabase-specific extensions, so the stock
+  # image is the right call for prod — it's stable and reliably tagged.
+  db:
+    image: postgres:15
+    container_name: polyagents-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-polyagents}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    # The DB stays internal to the compose network by default — no host port is
+    # mapped in prod (only the engine/frontend containers reach it).
+    #
+    # To expose it for local `psql` debugging, run compose with the debug
+    # override which adds the port mapping:
+    #   docker compose -f srcs/docker-compose.yml -f srcs/docker-compose.db-port.yml up
+    # (See that file.) Do NOT enable this in production.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-polyagents}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - polyagents
+
+  # ── Engine (Rust HTTP API + state machine + reconciler) ───────────────
+  engine:
+    build:
+      context: ./requirements/engine
+      dockerfile: Dockerfile
+    image: polyagents/engine:latest
+    container_name: polyagents-engine
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # Override DATABASE_URL so the engine reaches the db container by name,
+      # regardless of what the local-dev .env points at.
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-polyagents}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "polyagents-engine", "--help"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - polyagents
+
+  # ── Frontend (Next.js 16 standalone) ──────────────────────────────────
   frontend:
     build:
       context: ./requirements/frontend
       dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* is INLINED into the client bundle at build time — Next
+        # cannot read it at runtime. These flow straight from .env into the
+        # build, so a normal `docker compose up --build` bakes the real values.
+        # The `:?required` guard FAILS the build if any is unset/empty, so you
+        # can never silently ship a bundle with the Dockerfile's placeholder
+        # fallbacks. Set all four in .env before building.
+        #
+        # ENGINE_URL must be the address the *browser* uses to reach the engine
+        # (the host's external addr), NOT the docker-internal `engine` hostname.
+        NEXT_PUBLIC_ENGINE_URL: ${NEXT_PUBLIC_ENGINE_URL:?NEXT_PUBLIC_ENGINE_URL is required in .env (browser-visible engine URL)}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required in .env}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required in .env}
+        NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:?NEXT_PUBLIC_PRIVY_APP_ID is required in .env}
+    image: polyagents/frontend:latest
     container_name: polyagents-frontend
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      # Server-side fetches (if any) reach the engine over the docker network.
+      ENGINE_URL: http://engine:8080
+    depends_on:
+      engine:
+        condition: service_healthy
     ports:
       - "3000:3000"
-    environment:
-      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
-      NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID}
-    depends_on:
-      - supabase-db
     networks:
       - polyagents
-    restart: unless-stopped
 
-  # ── Supabase (PostgreSQL via local supabase CLI) ─────────────────────
-  # Run `supabase start` separately — this compose only declares the
-  # database dependency for production-like stacks.
-  supabase-db:
-    image: supabase/postgres:15.6.1
-    container_name: polyagents-db
-    ports:
-      - "5432:5432"
+  # ── MCP server (stdio) — launched by OpenClaw on the host ─────────────
+  # Optional. Bring it up explicitly: `docker compose --profile mcp up mcp`
+  # or point OpenClaw's openclaw.json at this image. The server reads the same
+  # .env as the engine and shares the same Postgres; it does NOT need to be
+  # running for the engine to trade — it is only how the OpenClaw agent issues
+  # commands. It speaks MCP over stdin/stdout, so it has no ports.
+  mcp:
+    profiles: ["mcp"]
+    build:
+      context: ./requirements/engine
+      dockerfile: Dockerfile
+    image: polyagents/engine:latest
+    container_name: polyagents-mcp
+    restart: "no"
+    env_file:
+      - ../.env
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-postgres}
-    volumes:
-      - db_data:/var/lib/postgresql/data
-      - ./requirements/supabase/migrations:/docker-entrypoint-initdb.d
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-polyagents}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Override the image CMD to run the stdio MCP server instead of the HTTP engine.
+    command: ["poly-mcp"]
+    stdin_open: true
     networks:
       - polyagents
-    restart: unless-stopped
 
 volumes:
   db_data:
@@ -50,3 +147,21 @@ volumes:
 networks:
   polyagents:
     driver: bridge
+
+# ── OpenClaw host integration ────────────────────────────────────────────
+# OpenClaw runs on the host (not in compose). To point it at this containerized
+# MCP server, build the image once (`docker compose --profile mcp build mcp`),
+# then in ~/.openclaw/openclaw.json set:
+#
+#   "mcp": { "servers": { "polyagents": {
+#       "command": "docker",
+#       "args": ["run", "--rm", "-i",
+#                "--network", "polyagents_polyagents",
+#                "--env-file", "/abs/path/to/.env",
+#                "polyagents/engine:latest", "poly-mcp"]
+#   }}}
+#
+# `--network polyagents_polyagents` attaches the one-off MCP container to the
+# compose network so DATABASE_URL=postgres://postgres:PASS@db:5432/polyagents
+# resolves to the db container by service name. (Compose prefixes the network
+# name with the project dir: <project>_<network>. Verify with `docker network ls`.)

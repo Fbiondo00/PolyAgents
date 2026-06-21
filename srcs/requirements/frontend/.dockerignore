@@ -1,0 +1,19 @@
+node_modules/
+.next/
+out/
+.vercel/
+
+.env
+.env.*
+*.env
+
+.git/
+.vscode/
+.idea/
+.DS_Store
+
+npm-debug.log*
+yarn-error.log*
+
+# Dockerfile itself doesn't need to be copied into the build context, but keep
+# it excluded only if you want faster context upload; harmless to leave in.

@@ -1,0 +1,14 @@
+# PolyAgents — LOCAL DEBUG OVERRIDE ONLY
+#
+# Exposes the Postgres port to the host so you can connect with `psql`.
+# The base compose keeps the DB internal-only (no host port) for prod safety.
+#
+# Enable (from repo root):
+#   docker compose -f srcs/docker-compose.yml -f srcs/docker-compose.db-port.yml up
+#   psql "postgres://postgres:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB:-polyagents}"
+#
+# DO NOT ship this on a production host. It is purely for local debugging.
+services:
+  db:
+    ports:
+      - "5432:5432"

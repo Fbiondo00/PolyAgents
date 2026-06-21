@@ -1,0 +1,14 @@
+# Build artifacts — never copy into the builder stage (huge + breaks cache).
+target/
+
+# Local environment / secrets — must never enter an image.
+.env
+.env.*
+*.env
+
+# Editor / OS noise.
+.vscode/
+.idea/
+.DS_Store
+
+# The engine writes no runtime files to its source tree; keep it clean.

@@ -1,22 +1,13 @@
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Standalone output: Next bundles only the needed node_modules into
+  // `.next/standalone`, giving a minimal production server image.
+  output: "standalone",
   typescript: {
     ignoreBuildErrors: true,
   },
   images: {
     unoptimized: true,
-  },
-  turbopack: {
-    root: path.resolve(__dirname, "../../"),
-    resolveAlias: {
-      "@polyagents/sdk": "./requirements/sdk/dist/index.js",
-      "@polyagents/schema": "./requirements/schema/dist/index.js",
-    },
   },
 };
 
