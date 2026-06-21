@@ -130,6 +130,27 @@ pub struct AiRequest {
     pub messages: Vec<AiMessage>,
     pub max_tokens: u32,
     pub temperature: f32,
+    /// Force JSON-object output. gemma4:12b (and other reasoning models behind
+    /// Craftshost) return clean, fence-free JSON under this mode — ~6× fewer
+    /// completion tokens than free-form prose, and far less likely to exhaust
+    /// the budget on chain-of-thought and return empty content.
+    #[serde(rename = "response_format", skip_serializing_if = "Option::is_none")]
+    pub response_format: Option<ResponseFormat>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResponseFormat {
+    #[serde(rename = "type")]
+    pub kind: String,
+}
+
+impl AiRequest {
+    /// JSON-object response format (OpenAI/Ollama-compat). `None` = free-form.
+    pub fn json_object() -> Option<ResponseFormat> {
+        Some(ResponseFormat {
+            kind: "json_object".into(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
