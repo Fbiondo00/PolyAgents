@@ -31,8 +31,9 @@ impl AiClient {
         market: &Market,
         book: &OrderBook,
         side_history: &str,
+        guidance: Option<&str>,
     ) -> Result<TradingDecision> {
-        let prompt = crate::prompt::build_strategy_prompt(market, book, side_history);
+        let prompt = crate::prompt::build_strategy_prompt(market, book, side_history, guidance);
 
         let request = AiRequest {
             model: self.config.model.clone(),

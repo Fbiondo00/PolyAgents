@@ -108,9 +108,16 @@ impl<'a> CycleRunner<'a> {
             timestamp: chrono::Utc::now().timestamp_millis(),
         };
 
+        // Load active guidance (OpenClaw's reflection output) and feed it into
+        // the AI prompt — the closed learning loop. Cheap DB read per cycle.
+        let guidance = poly_db::guidance::get(self.pool, &self.vault.id)
+            .await
+            .unwrap_or_default();
+        let guidance_opt = (!guidance.is_empty()).then_some(guidance.as_str());
+
         let decision = self
             .ai
-            .get_trading_decision(&market, &book, "[]")
+            .get_trading_decision(&market, &book, "[]", guidance_opt)
             .await?;
 
         tracing::info!(

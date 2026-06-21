@@ -92,3 +92,12 @@ pub struct WithdrawParams {
     /// Amount in USDC to withdraw
     pub amount: String,
 }
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct GuidanceParams {
+    /// The vault ID to set guidance for
+    pub vault_id: String,
+    /// Contextual guidance text for the engine's AI. Empty string clears it.
+    /// Keep to one or two concrete, actionable rules the model can heed.
+    pub guidance: String,
+}

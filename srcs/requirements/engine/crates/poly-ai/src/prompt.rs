@@ -28,8 +28,9 @@ pub fn build_strategy_prompt(
     market: &Market,
     book: &OrderBook,
     side_history: &str,
+    guidance: Option<&str>,
 ) -> String {
-    build_strategy_prompt_with_context(market, book, side_history, None, None)
+    build_strategy_prompt_with_context(market, book, side_history, None, None, guidance)
 }
 
 pub fn build_strategy_prompt_with_context(
@@ -38,6 +39,7 @@ pub fn build_strategy_prompt_with_context(
     side_history: &str,
     seconds_to_expiry: Option<i64>,
     inventory: Option<&str>,
+    guidance: Option<&str>,
 ) -> String {
     let best_bid = book
         .bids
@@ -72,6 +74,13 @@ pub fn build_strategy_prompt_with_context(
         .map(|s| s.to_string())
         .unwrap_or_else(|| "no inventory".into());
 
+    // Active guidance: contextual advice from OpenClaw's reflection layer (the
+    // closed loop). Rendered only when present and non-empty.
+    let guidance_info = match guidance {
+        Some(g) if !g.trim().is_empty() => format!("{}\n", g.trim()),
+        _ => String::new(),
+    };
+
     format!(
         r#"Market: {}
 Question: {}
@@ -83,7 +92,7 @@ Order Book:
   Asks (top 5): {}
   Best bid/ask: {} / {}
 Side history: {}
-
+{}
 Provide your trading decision as JSON."#,
         market.id,
         market.question,
@@ -101,5 +110,10 @@ Provide your trading decision as JSON."#,
         best_bid,
         best_ask,
         side_history,
+        if guidance_info.is_empty() {
+            String::new()
+        } else {
+            format!("Active guidance (from learning):\n{}\n", guidance_info)
+        },
     )
 }

@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let decision = client
-        .get_trading_decision(&market, &book, "UP, UP, DOWN, UP, UP")
+        .get_trading_decision(&market, &book, "UP, UP, DOWN, UP, UP", None)
         .await?;
 
     println!(

@@ -289,6 +289,44 @@ Each item joins an AI trading decision to what actually happened: the decision c
         }
     }
 
+    #[tool(description = "Get the current active guidance for a vault — the contextual advice the engine's AI reads each cycle. This is the closed learning loop: OpenClaw reflection writes here, the next trading decision sees it. Returns empty string if none set.")]
+    async fn get_active_guidance(
+        &self,
+        Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let pool = self.state.engine.pool();
+        match poly_db::guidance::get(pool, &vault_id).await {
+            Ok(guidance) => json_result(serde_json::json!({
+                "vault_id": vault_id,
+                "guidance": guidance,
+            })),
+            Err(e) => Err(McpError::internal_error(
+                "get_active_guidance_failed",
+                Some(serde_json::json!({ "error": e.to_string() })),
+            )),
+        }
+    }
+
+    #[tool(description = "Set the active guidance for a vault — contextual advice injected into the engine AI's prompt on the next cycle. Write ONE concrete, actionable rule the model can heed (e.g. 'Skip both-side quotes when seconds_to_expiry < 60 and spread > 2c'). Empty string clears it. This is how learning reaches trading: reflection → set_active_guidance → next decision.")]
+    async fn set_active_guidance(
+        &self,
+        Parameters(GuidanceParams { vault_id, guidance }): Parameters<GuidanceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let pool = self.state.engine.pool();
+        let now = chrono::Utc::now().timestamp_millis();
+        match poly_db::guidance::set(pool, &vault_id, &guidance, now).await {
+            Ok(()) => json_result(serde_json::json!({
+                "status": "set",
+                "vault_id": vault_id,
+                "guidance": guidance,
+            })),
+            Err(e) => Err(McpError::internal_error(
+                "set_active_guidance_failed",
+                Some(serde_json::json!({ "error": e.to_string() })),
+            )),
+        }
+    }
+
     #[tool(description = "Get PnL history snapshots for a vault.")]
     async fn get_pnl(
         &self,
