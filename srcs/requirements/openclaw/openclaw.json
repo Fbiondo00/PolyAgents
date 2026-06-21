@@ -1,10 +1,72 @@
+// PolyAgents — reference OpenClaw Gateway configuration.
+//
+// IMPORTANT: OpenClaw does NOT read this file. The Gateway reads
+// ~/.openclaw/openclaw.json (JSON5). This file is the canonical *source* of
+// what `scripts/setup-openclaw.sh` installs via the CLI (openclaw mcp add,
+// openclaw skills install, openclaw config set). Keep it in sync with the
+// script. Paths assume the repo root is the cwd when running the MCP server.
 {
-  "mcpServers": {
-    "polyagents": {
-      "command": "../engine/target/release/poly-mcp"
+  // Outbound MCP server: the PolyAgents engine's tool surface (start_engine,
+  // get_recent_outcomes, update_config, ...). Installed via:
+  //   openclaw mcp add polyagents --command <repo>/srcs/requirements/engine/target/release/poly-mcp \
+  //     --env POLYAGENTS_ENV_FILE=$HOME/.openclaw/polyagents.env
+  // Secrets are NOT inlined here — they live in the sidecar ~/.openclaw/polyagents.env
+  // (mode 0600, copied from the repo .env by setup-openclaw.sh). poly-mcp loads
+  // that file on boot (crates/poly-mcp/src/dotenv.rs). This keeps openclaw.json
+  // secret-free.
+  "mcp": {
+    "servers": {
+      "polyagents": {
+        "command": "srcs/requirements/engine/target/release/poly-mcp",
+        "transport": "stdio",
+        "env": { "POLYAGENTS_ENV_FILE": "~/.openclaw/polyagents.env" }
+      }
     }
   },
-  "skills": [
-    "skills/polyagents-trading-cycle"
-  ]
+
+  // Skills are installed into the workspace (~/.openclaw/workspace/skills/) via:
+  //   openclaw skills install ./srcs/requirements/openclaw/skills/polyagents-reflect --as polyagents-reflect
+  //   openclaw skills install ./srcs/requirements/openclaw/skills/polyagents-trading-cycle --as polyagents-trading-cycle
+  // (Discovered automatically from the workspace skills dir; listed here for reference.)
+
+  // Heartbeat drives the slow reflection loop in-session. Every ~20 min it
+  // reads HEARTBEAT.md and runs polyagents-reflect. lightContext + isolated
+  // keep per-beat tokens cheap. Applied via `openclaw config set`.
+  "agents": {
+    "defaults": {
+      "heartbeat": {
+        "every": "20m",
+        "prompt": "Run the polyagents-reflect skill. Read HEARTBEAT.md and AGENTS.md for procedure. If nothing needs attention after observing recent outcomes, reply HEARTBEAT_OK.",
+        "lightContext": true,
+        "isolatedSession": true,
+        "skipWhenBusy": true
+      }
+    }
+  },
+
+  // Dreaming: consolidate daily trade observations into MEMORY.md. Piggybacks
+  // on the heartbeat (must be enabled, else dreaming reports 'blocked').
+  // Applied via `openclaw config set`.
+  "plugins": {
+    "entries": {
+      "memory-core": {
+        "config": {
+          "dreaming": {
+            "enabled": true,
+            "frequency": "0 3 * * *"
+          }
+        }
+      }
+    }
+  },
+
+  // Skill Workshop: full autonomy — agent may draft AND auto-apply skill
+  // proposals. Risk is bounded by SOUL.md (never live orders, never >$0.50
+  // bids, never disable max_drawdown_usdc). Applied via `openclaw config set`.
+  "skills": {
+    "workshop": {
+      "autonomous": { "enabled": true },
+      "approvalPolicy": "auto"
+    }
+  }
 }

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use rmcp::ServiceExt;
 
+mod dotenv;
 mod params;
 mod server;
 mod state;
@@ -26,6 +27,10 @@ async fn main() -> Result<()> {
         .init();
 
     tracing::info!("Starting PolyAgents MCP server");
+
+    // Load secrets from the sidecar env file (~/.openclaw/polyagents.env, or
+    // $POLYAGENTS_ENV_FILE) before reading config. Existing process env wins.
+    dotenv::load_sidecar();
 
     let config = AppConfig::from_env()?;
     let database_url = config.database_url.clone();
