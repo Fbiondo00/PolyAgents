@@ -157,16 +157,35 @@ impl<'a> CycleRunner<'a> {
 
         // Order gate: only place bids when the AI clears a minimal confidence.
         if d.confidence <= 0.1 {
-            tracing::info!(
-                vault_id = vault_id,
-                confidence = d.confidence,
-                "Confidence below order gate, skipping bids"
-            );
+            // confidence == 0.0 is the signature of the neutral fallback returned
+            // by get_trading_decision() when the AI API fails after all retries
+            // (client.rs:80-86). Treat it distinctly from a deliberate low-confidence
+            // decision so silent no-trading during sustained AI unavailability is
+            // observable — without removing the fallback itself. The reconciler and
+            // OpenClaw heartbeat otherwise see no new outcomes and report OK while
+            // the engine is effectively starved (see finding: AI fallback starves
+            // the learning loop).
+            if d.confidence == 0.0 {
+                tracing::warn!(
+                    vault_id = vault_id,
+                    confidence = d.confidence,
+                    reasoning = %d.reasoning,
+                    "AI FALLBACK active (confidence 0.0) — no orders placed this cycle; \
+                     sustained AI unavailability will starve the learning loop"
+                );
+            } else {
+                tracing::info!(
+                    vault_id = vault_id,
+                    confidence = d.confidence,
+                    "Confidence below order gate, skipping bids"
+                );
+            }
             self.audit(
                 "skip-low-confidence",
                 &serde_json::json!({
                     "market_id": decision.market.id,
                     "ai_confidence": d.confidence,
+                    "ai_fallback": d.confidence == 0.0,
                 }),
             )
             .await?;
@@ -200,6 +219,11 @@ impl<'a> CycleRunner<'a> {
                     yes_size,
                 )
                 .await?;
+                // Sync the persisted row with the authoritative CLOB status so
+                // /orders (and the reconciler) do not read a stale OPEN/filled=0
+                // record. `update_status` existed but was never called, leaving
+                // virtual_orders stuck at insert-time values forever.
+                self.sync_order_status(&result.order_id, yes_size).await;
                 decision.yes_order_id = Some(result.order_id);
             }
             Err(e) => {
@@ -239,6 +263,9 @@ impl<'a> CycleRunner<'a> {
                     no_size,
                 )
                 .await?;
+                // Sync the persisted row with the authoritative CLOB status so
+                // /orders does not report a stale OPEN/filled=0 record.
+                self.sync_order_status(&result.order_id, no_size).await;
                 decision.no_order_id = Some(result.order_id);
             }
             Err(e) => {
@@ -307,7 +334,10 @@ impl<'a> CycleRunner<'a> {
         size: rust_decimal::Decimal,
     ) -> Result<()> {
         let now = chrono::Utc::now().timestamp_millis();
-        let qty: i32 = size.try_into().unwrap_or(0);
+        // Avoid silently dropping valid Decimal sizes (e.g. fractional "0.5" or
+        // values > i32::MAX) to 0 via unwrap_or(0). Clamp out-of-range and warn
+        // on unrepresentable values so the persisted row is not silently wrong.
+        let qty: i32 = decimal_to_i32_clamped(size);
         let order = VirtualOrder {
             id: result.order_id.clone(),
             engine_run_id: self.run_id.into(),
@@ -329,5 +359,94 @@ impl<'a> CycleRunner<'a> {
         };
         poly_db::orders::insert(self.pool, &order).await?;
         Ok(())
+    }
+
+    /// Sync a persisted virtual_orders row with the authoritative CLOB status.
+    ///
+    /// Closes the gap where orders were inserted at `status = OPEN,
+    /// filled_qty = 0` and never updated again: the `update_status` DB call
+    /// existed but was never invoked, so the `/orders` endpoint and any PnL
+    /// math reading `filled_qty` were permanently wrong (e.g. a live fill
+    /// masked by a later `cancel_by_vault` reporting CANCELLED). We poll the
+    /// CLOB once right after placement and write the result back.
+    ///
+    /// Best-effort: a failure here is logged but does not fail the cycle, since
+    /// the order was already placed and recorded. The reconciler sweeps the rest.
+    async fn sync_order_status(
+        &self,
+        order_id: &str,
+        submitted_size: rust_decimal::Decimal,
+    ) {
+        let state = match self.market.get_order(order_id).await {
+            Ok(state) => state,
+            Err(e) => {
+                tracing::warn!(
+                    order_id = order_id,
+                    "get_order lookup failed, leaving row at insert-time status: {e}"
+                );
+                return;
+            }
+        };
+
+        let (status, filled_qty) = map_clob_status(&state, submitted_size);
+        if let Err(e) =
+            poly_db::orders::update_status(self.pool, order_id, status, filled_qty).await
+        {
+            tracing::warn!(
+                order_id = order_id,
+                "update_status failed for freshly placed order: {e}"
+            );
+        } else {
+            tracing::debug!(
+                order_id = order_id,
+                ?status,
+                filled_qty,
+                "Synced order status from CLOB after placement"
+            );
+        }
+    }
+}
+
+/// Map a raw CLOB `OrderState` (lowercase status string + matched size) to our
+/// `OrderStatus` and an integer filled quantity. Mirrors the status strings
+/// returned by `GET /data/order/{id}` (matched, live, partially_matched, ...).
+fn map_clob_status(
+    state: &poly_market::clob::OrderState,
+    submitted_size: rust_decimal::Decimal,
+) -> (OrderStatus, i32) {
+    let filled_qty = if submitted_size.is_zero() {
+        0
+    } else {
+        decimal_to_i32_clamped(state.size_matched)
+    };
+    let status = match state.status.as_str() {
+        "matched" => OrderStatus::Filled,
+        "partially_matched" => OrderStatus::PartiallyFilled,
+        "canceled" | "cancelled" => OrderStatus::Cancelled,
+        "expired" => OrderStatus::Expired,
+        "rejected" => OrderStatus::Rejected,
+        // "live", "", or unknown — leave as Open; the reconciler handles the rest.
+        _ => OrderStatus::Open,
+    };
+    (status, filled_qty)
+}
+
+/// Convert a Decimal to i32, clamping out-of-range values to i32::MAX instead
+/// of silently dropping them to 0 (see finding: unwrap_or(0) drops valid sizes).
+fn decimal_to_i32_clamped(d: rust_decimal::Decimal) -> i32 {
+    use std::cmp::Ordering;
+    let converted: Result<i32, _> = d.try_into();
+    match converted {
+        Ok(v) => v,
+        Err(_) => {
+            let max = rust_decimal::Decimal::from(i32::MAX);
+            if d.cmp(&max) == Ordering::Greater {
+                tracing::warn!(value = %d, "Decimal value exceeds i32::MAX, clamping to i32::MAX");
+                i32::MAX
+            } else {
+                tracing::warn!(value = %d, "Decimal value not representable as i32, using 0");
+                0
+            }
+        }
     }
 }

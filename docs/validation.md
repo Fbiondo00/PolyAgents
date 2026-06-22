@@ -1,3 +1,9 @@
+> **HISTORICAL — NOT SUBMITTED.** The sponsor integrations described below (Arc, Hedera, ENS) were **removed from the codebase** (see commit `66f74c8`) and are **not implemented**. No Arc contracts are deployed, no Hedera HTS/HCS calls exist, and no ENS subnames are created. **Do not submit any of these bounties as done** — the prize-eligibility analysis and the "$9,500" figure on line 54 below were written before the integrations were stripped and **do not reflect the current code**. This document is kept only as a historical record of the pre-strip prize plan. The code in this repo today does not satisfy the hard requirements of any of these bounties.
+
+---
+
+> The remainder of this file is the original, unmodified pre-hackathon plan. Treat every claim of implemented integrations as aspirational and **unverified against the current codebase**.
+
 Good changes. Let me work through all four questions using the prize data already pulled.
 1. Is This Valid?
 Yes, with one important clarification to check.
@@ -51,7 +57,7 @@ ENS Most Creative rules:
   Submit with video or live demo link
   Must present at ENS booth in person Sunday morning — put this in your calendar now
 Extra work required: ~2 hours. viem setText and getText are 10-line integrations. Register one subname on ENS app (5 minutes). Wire policy hash write on vault creation, stats write on each trade. Done.
-Updated prize ceiling with ENS added: $9,500
+Updated prize ceiling with ENS added: $9,500  (**NOTE: this figure assumed all four sponsor integrations would be built. They were not. The current repo does not meet the submission requirements for any of these bounties — see the banner at the top of this file.**)
 4. Implementation Roadmap
 Before You Arrive — Setup (2 hours)
 Task
@@ -220,4 +226,4 @@ Day 3 morning
 Submissions + booth visits
 Total
 23h
-4 prize submissions, 0 blockers
+4 prize submissions, 0 blockers  (**NOTE: aspirational pre-strip plan. None of these submissions were made — sponsor integrations were not implemented. See banner at top.**)

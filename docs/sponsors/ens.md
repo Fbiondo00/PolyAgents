@@ -1,3 +1,6 @@
+> **UN-IMPLEMENTED DESIGN DOC — DO NOT SUBMIT AS DONE.** This is a pre-hackathon step-by-step **plan** for an ENS integration (vault subnames, `policy.commitment` text-record cryptographic commitments, ENSIP-25 agent profiles, live agent stats, fleet registry). **None of it was implemented.** There is no `src/ens/` or `lib/ens/` module, no viem ENS subname creation, and no `polyagents.eth` registration in this repo (the ENS integration was removed — see commit `66f74c8`). The design below is a reference sketch, not working code. Do not present this document as evidence of a completed ENS bounty (neither "Best ENS Integration for AI Agents" nor "Most Creative Use of ENS"). It is retained only as a reference design.
+
+---
 
 # Implementazione ENS — Doppio Bounty
 

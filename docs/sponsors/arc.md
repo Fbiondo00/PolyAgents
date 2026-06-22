@@ -1,3 +1,6 @@
+> **UN-IMPLEMENTED DESIGN DOC — DO NOT SUBMIT AS DONE.** This is a pre-hackathon step-by-step **plan** for an Arc (Circle L1) integration. **None of it was implemented.** There is no `PolyAgentsMarket.sol` contract, no Foundry/Hardhat deployment, no Arc testnet client, and no `src/arc/` or `lib/arc/` module in this repo (the Arc integration was removed — see commit `66f74c8`). The code blocks below are reference sketches, not working code. Do not present this document as evidence of a completed Arc bounty. It is retained only as a reference design.
+
+---
 
 Ora ho tutto ciò che serve su Arc. Ecco il piano completo.ethglobal+2
 Implementazione Arc — Step by Step

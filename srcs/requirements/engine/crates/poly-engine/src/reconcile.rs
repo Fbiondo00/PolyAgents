@@ -229,15 +229,26 @@ fn filled_qty_for(res: Result<poly_market::clob::OrderState>, intended: i32) -> 
 
 /// Derive the winning side ("YES" / "NO") from resolved token prices. The first
 /// token is YES, the second is NO (the discover/quote split enforces binary
-/// markets). Returns None if no price cleanly indicates a winner (e.g. prices
-/// still 0.5/0.5 mid-resolution).
+/// markets). Returns None if no price cleanly indicates a winner.
+///
+/// A resolved binary market pays $1 to the winner and $0 to the loser, but
+/// Gamma rarely hands back exactly 1.0/0.0: settlements are frequently
+/// fee-adjusted or CLOB-rounded to values like 0.99 / 0.999 for the winner and
+/// 0.01 / 0.001 for the loser. The previous `p >= Decimal::ONE` comparison
+/// therefore never matched and left outcomes OPEN forever. The winning token is
+/// the one above the 0.5 midpoint; the loser sits below it. A genuine tie
+/// (exactly 0.5/0.5, i.e. still mid-resolution or a dead heat) defers.
 fn derive_winning_side(prices: &[Decimal]) -> Option<String> {
-    let one = Decimal::ONE;
-    let yes_won = prices.first().map(|p| p >= &one).unwrap_or(false);
-    let no_won = prices.get(1).map(|p| p >= &one).unwrap_or(false);
+    let half = Decimal::new(5, 1); // 0.5
+    let yes = prices.first().copied().unwrap_or(Decimal::ZERO);
+    let no = prices.get(1).copied().unwrap_or(Decimal::ZERO);
+    let yes_won = yes > half;
+    let no_won = no > half;
     match (yes_won, no_won) {
         (true, false) => Some("YES".to_string()),
         (false, true) => Some("NO".to_string()),
+        // Both above 0.5 (impossible for a clean binary settle) or both at/below
+        // 0.5 (tie / still resolving) → defer to a future sweep.
         _ => None,
     }
 }
@@ -332,10 +343,57 @@ mod tests {
 
     #[test]
     fn winning_side_from_prices() {
+        // Exact 1.0/0.0 settle still resolves.
         assert_eq!(derive_winning_side(&[d("1"), d("0")]).as_deref(), Some("YES"));
         assert_eq!(derive_winning_side(&[d("0"), d("1")]).as_deref(), Some("NO"));
+        // Genuine tie / mid-resolution → defer.
         assert_eq!(derive_winning_side(&[d("0.5"), d("0.5")]), None, "mid-resolution → defer");
         assert_eq!(derive_winning_side(&[d("0"), d("0")]), None, "no winner → defer");
+    }
+
+    #[test]
+    fn winning_side_from_fee_adjusted_prices() {
+        // Gamma commonly hands back fee-adjusted / CLOB-rounded settlements where
+        // the winner reads 0.99 (or 0.999) instead of exactly 1.0. The previous
+        // `>= 1.0` comparison failed here and left the outcome OPEN forever.
+        assert_eq!(
+            derive_winning_side(&[d("0.99"), d("0.01")]).as_deref(),
+            Some("YES"),
+            "0.99 YES win must reconcile, not defer"
+        );
+        assert_eq!(
+            derive_winning_side(&[d("0.01"), d("0.99")]).as_deref(),
+            Some("NO"),
+            "0.99 NO win must reconcile, not defer"
+        );
+        assert_eq!(
+            derive_winning_side(&[d("0.999"), d("0.001")]).as_deref(),
+            Some("YES"),
+            "0.999 YES win must reconcile, not defer"
+        );
+        assert_eq!(
+            derive_winning_side(&[d("0.9999"), d("0.0001")]).as_deref(),
+            Some("YES"),
+            "near-1.0 YES win must reconcile, not defer"
+        );
+    }
+
+    #[test]
+    fn winning_side_boundary_and_ambiguous() {
+        // Exactly 0.5 is NOT a win (strictly greater than the midpoint required):
+        // a 0.5/0.5 dead heat stays deferred rather than resolving both ways.
+        assert_eq!(
+            derive_winning_side(&[d("0.5"), d("0.4")]).as_deref(),
+            None,
+            "0.5 exactly is not a win → defer"
+        );
+        // A hair above 0.5 wins.
+        assert_eq!(
+            derive_winning_side(&[d("0.5001"), d("0.4999")]).as_deref(),
+            Some("YES")
+        );
+        // Both below 0.5 → no winner.
+        assert_eq!(derive_winning_side(&[d("0.4"), d("0.4")]), None);
     }
 
     #[test]

@@ -40,6 +40,18 @@ variable "engine_port" {
   default     = 8080
 }
 
+variable "ssh_allowed_cidrs" {
+  description = "CIDR blocks allowed to reach SSH (port 22). Empty list = deny all inbound SSH (use SSM/bastion instead)."
+  type        = list(string)
+  default     = []
+}
+
+variable "engine_allowed_cidrs" {
+  description = "CIDR blocks allowed to reach the engine HTTP API. Defaults to the VPC CIDR so only intra-VPC traffic is accepted."
+  type        = list(string)
+  default     = ["10.0.0.0/16"]
+}
+
 # ── RDS ───────────────────────────────────────────────────────────────
 
 variable "rds_instance_class" {
@@ -64,6 +76,27 @@ variable "rds_db_name" {
   description = "Database name"
   type        = string
   default     = "polyagents"
+}
+
+# ── Engine / AI runtime ──────────────────────────────────────────────
+
+variable "openai_api_base" {
+  description = "OpenAI-compatible API base URL. Defaults to the craftshost gateway."
+  type        = string
+  default     = "https://openai.craftshost.com"
+}
+
+variable "openai_api_key" {
+  description = "OpenAI API key. Leave empty to write a commented placeholder (engine then errors loudly instead of sending empty auth)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "openai_model" {
+  description = "OpenAI model identifier used by the engine"
+  type        = string
+  default     = "gpt-4o"
 }
 
 # ── S3 / CloudFront ──────────────────────────────────────────────────

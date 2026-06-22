@@ -20,6 +20,21 @@
         "command": "srcs/requirements/engine/target/release/poly-mcp",
         "transport": "stdio",
         "env": { "POLYAGENTS_ENV_FILE": "~/.openclaw/polyagents.env" }
+      },
+
+      // Read-only SQL access to the engine's Postgres. Documented in
+      // workspace/AGENTS.md (query / schema_info / list_tables / describe_table).
+      // Backed by @modelcontextprotocol/server-postgres, wrapped so the
+      // connection string never appears in this file: the wrapper reads
+      // SUPABASE_POSTGRES_URL (or DATABASE_URL) from the sidecar env at boot.
+      // Installed via:
+      //   openclaw mcp add postgres-supabase \
+      //     --command ~/.openclaw/bin/postgres-mcp.sh \
+      //     --env POLYAGENTS_ENV_FILE=$HOME/.openclaw/polyagents.env
+      "postgres-supabase": {
+        "command": "~/.openclaw/bin/postgres-mcp.sh",
+        "transport": "stdio",
+        "env": { "POLYAGENTS_ENV_FILE": "~/.openclaw/polyagents.env" }
       }
     }
   },
@@ -28,6 +43,22 @@
   //   openclaw skills install ./srcs/requirements/openclaw/skills/polyagents-reflect --as polyagents-reflect
   //   openclaw skills install ./srcs/requirements/openclaw/skills/polyagents-trading-cycle --as polyagents-trading-cycle
   // (Discovered automatically from the workspace skills dir; listed here for reference.)
+
+  // LLM model / provider — the heartbeat and dreaming turns need a brain.
+  // Without this block, every isolated heartbeat session and the daily
+  // dreaming consolidation silently no-op (no model = no LLM turn). OpenClaw
+  // reads the live config from ~/.openclaw/openclaw.json, so this is applied
+  // via `openclaw config set` (see setup-openclaw.sh) — but DO NOT commit a
+  // real key here. Point OpenClaw at the same OpenAI-compatible gateway the
+  // Rust engine already uses (Craftshost, OPENAI_* in the sidecar .env).
+  //
+  // Uncomment and fill after install (key lives in the sidecar env, not here):
+  //   "model": {
+  //     "provider": "openai",                 // Craftshost is OpenAI-compatible
+  //     "model": "gemma4:12b",                // OPENAI_MODEL from .env
+  //     "baseURL": "https://openai.craftshost.com",  // OPENAI_API_BASE from .env
+  //     "apiKey": "${OPENAI_API_KEY}"         // resolved from the sidecar env
+  //   },
 
   // Heartbeat drives the slow reflection loop in-session. Every ~20 min it
   // reads HEARTBEAT.md and runs polyagents-reflect. lightContext + isolated
@@ -55,6 +86,19 @@
             "enabled": true,
             "frequency": "0 3 * * *"
           }
+
+          // Semantic memory recall across memory/YYYY-MM-DD.md daily notes.
+          // Without an embedding/search provider, the agent can only re-read
+          // MEMORY.md (injected each session) — it cannot search historical
+          // daily notes, so un-promoted observations age out of reach. Point
+          // the search at the same OpenAI-compatible gateway (Craftshost) so no
+          // extra provider/key is needed. Uncomment and fill after install:
+          //   "memory-search": {
+          //     "provider": "openai",
+          //     "baseURL": "https://openai.craftshost.com",
+          //     "apiKey": "${OPENAI_API_KEY}",   // resolved from the sidecar env
+          //     "embeddingModel": "text-embedding-3-small"
+          //   }
         }
       }
     }

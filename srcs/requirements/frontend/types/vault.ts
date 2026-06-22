@@ -1,3 +1,5 @@
+import type { StrategyConfig } from './engine-schemas'
+
 export interface AuditEvent {
   id: string
   type: 'bid-placed' | 'fill' | 'sell-placed' | 'rollover' | 'reconcile' | 'ai-analysis'
@@ -8,6 +10,53 @@ export interface AuditEvent {
   pnl?: number
   reasoning?: string
   txHash?: string
+}
+
+// ── Vault.strategy <-> engine StrategyConfig field mapping ─────────────────
+// The UI edits Vault.strategy (bidPrice / sellPrice / maxCapital / ...) but the
+// engine's update_config endpoint expects the StrategyConfig shape
+// (entryPrice / exitPrice / maxCapitalUsdc / ...). Sending Vault.strategy
+// verbatim stores bidPrice/sellPrice as raw JSON, which the engine ignores so
+// the user's $0.20 bid silently falls back to the $0.01 default. These helpers
+// translate between the two shapes so the correct field names reach the engine.
+
+const STRATEGY_CONFIG_DEFAULTS = {
+  enabled: true,
+  maxTradesPerMarket: 1,
+  maxTradesPolicy: 'side' as const,
+  reconcileIntervalCycles: 8,
+  strictPassiveOnly: true,
+  allowBothSides: true,
+  cancelOpenBuysOnExpiry: true,
+  autoReentryEnabled: false,
+}
+
+export function vaultStrategyToConfig(strategy: Vault['strategy']): StrategyConfig {
+  return {
+    ...STRATEGY_CONFIG_DEFAULTS,
+    // Field-name mapping (see findings #27): the engine keys on these names.
+    entryPrice: strategy.bidPrice,
+    exitPrice: strategy.sellPrice,
+    orderSize: strategy.trancheSize,
+    maxCapitalUsdc: strategy.maxCapital > 0 ? strategy.maxCapital : undefined,
+    noNewEntriesLastSeconds: strategy.noNewEntriesLast,
+    keepSellOrdersAfterExpirySeconds: strategy.keepSellAfter,
+    // aiEnabled has no direct StrategyConfig counterpart; passive-only is the
+    // closest semantic — when AI is off the vault stays strictly passive.
+    strictPassiveOnly: !strategy.aiEnabled,
+  }
+}
+
+export function configToVaultStrategy(config: StrategyConfig): Vault['strategy'] {
+  return {
+    bidPrice: config.entryPrice,
+    sellPrice: config.exitPrice,
+    maxCapital: config.maxCapitalUsdc ?? 0,
+    trancheSize: config.orderSize,
+    noNewEntriesLast: config.noNewEntriesLastSeconds,
+    keepSellAfter: config.keepSellOrdersAfterExpirySeconds,
+    aiEnabled: !config.strictPassiveOnly,
+  }
 }
 
 export interface Vault {
@@ -26,6 +75,12 @@ export interface Vault {
   }
   funding: {
     usdc: number
+    /**
+     * @deprecated Vestige of the stripped Hedera integration. Always 0 for new
+     * vaults (see app/vault/create/page.tsx). The agent-page HBAR gauge reads
+     * this but no code ever funds it. Do not add new usages; the field will be
+     * removed once the dependent UI is cleaned up.
+     */
     hbar: number
   }
   inventory: {

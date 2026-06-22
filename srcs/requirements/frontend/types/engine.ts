@@ -5,10 +5,12 @@
 export type MarketSide = "YES" | "NO";
 export type OrderIntent = "BUY" | "SELL";
 export type OrderStatus = "OPEN" | "PARTIAL" | "FILLED" | "CANCELLED" | "EXPIRED" | "REJECTED";
+
+// Mirrors the Rust EngineState enum (poly-types). SYNCING_MARKET was previously
+// listed here but has no Rust variant, so any UI keyed on it was dead code.
 export type EngineState =
   | "IDLE"
   | "DISCOVERING_MARKET"
-  | "SYNCING_MARKET"
   | "READY"
   | "QUOTING"
   | "HOLDING_INVENTORY"
@@ -88,7 +90,9 @@ export interface MarketState {
 export interface EngineRun {
   id: string;
   vaultId: string;
-  status: "running" | "stopped" | "paused" | "error";
+  // Mirrors the Rust EngineRunStatus enum (Running/Stopped/Error). The engine
+  // never emits "paused", so any UI matching on it was dead code.
+  status: "running" | "stopped" | "error";
   currentState: EngineState;
   activeMarketId: string | null;
   startedAt: number;

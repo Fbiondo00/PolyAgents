@@ -6,12 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **PolyAgents** is a hackathon prototype (ETHGlobal Cannes 2026) for an AI-powered autonomous trading vault targeting Polymarket BTC "Up or Down" 5-minute binary markets. The strategy is passive market-making: place $0.01 limit bids on both sides, flip fills at $0.02 for 100% spread capture.
 
-The prototype integrates three sponsor chains:
-- **Arc** (EVM L1) — USDC-native vault for position settlement and PnL
-- **Hedera** — HTS token gating, HCS audit logging, HBAR micropayments per agent cycle, HCS-14 agent identity
-- **ENS** — Strategy policy hash committed as text records on vault subnames
+PolyAgents is a lean Polymarket bot: a Rust engine (axum HTTP API + state machine + reconciler), a Next.js frontend, Postgres/Supabase persistence, and an OpenClaw learning layer. There are **no Arc/Hedera/ENS integrations** — sponsor code was explored pre-hackathon and then stripped (commit `66f74c8`); `docs/sponsors/` is historical only (see "Sponsor Integration docs" below).
 
-**Login/Wallet provider:** [Privy](https://privy.io) — multi-chain wallet authentication (email, social login, or wallet connect). Currently mocked via `PrivyConnectMock` component (`components/privy-connect-mock.tsx`). The real integration will use `@privy-io/react-auth` for instant testnet wallet creation with auto-funded Arc USDC, Hedera HBAR, and Polygon MATIC.
+**Login/Wallet provider:** [Privy](https://privy.io) — multi-chain wallet authentication (email, social login, or wallet connect). The real `@privy-io/react-auth` integration is wired in `app/providers.tsx` (`PrivyProvider`) and the login UI in `components/privy-login-button.tsx`. (There is no mock component — `PrivyConnectMock` does not exist.)
 
 ## Build & Run Commands
 
@@ -23,21 +20,18 @@ npm run build     # Production build
 npm run start     # Start production server
 npm run lint      # ESLint
 
-# Build packages (order: schema → sdk → mcp)
-cd srcs/requirements/schema && npm install && npm run build
-cd srcs/requirements/sdk && npm install && npm run build
-cd srcs/requirements/mcp && npm install && npm run build
-
-# MCP server
-cd srcs/requirements/mcp && node dist/index.js
+# Rust engine (axum HTTP API on port 8080, loopback by default)
+cd srcs/requirements/engine
+cargo run --release                       # Build & run the engine binary
+cargo build --release                     # Build only (binary: target/release/polyagents-engine)
+cargo build --release -p poly-mcp         # Build the MCP server (target/release/poly-mcp)
 
 # Supabase (local development)
 supabase start                          # Start local Supabase containers
-supabase gen types typescript --local   # Regenerate types after migration changes
 supabase stop                           # Stop containers
 ```
 
-No test runner is configured for the frontend.
+No test runner is configured for the frontend or engine.
 
 ## Architecture
 
@@ -46,40 +40,26 @@ No test runner is configured for the frontend.
 ```
 PolyAgents/
 ├── CLAUDE.md, README.md
-├── docs/                     # All documentation
+├── docs/                     # All documentation (mostly historical — see Sponsor Integration docs)
 └── srcs/
     └── requirements/
-        ├── frontend/         # Next.js app (app/, components/, lib/, hooks/, public/)
-        ├── schema/           # Shared types, schemas, constants (@polyagents/schema)
-        ├── sdk/              # Business logic modules (@polyagents/sdk)
-        ├── mcp/              # MCP server exposing SDK tools via stdio (@polyagents/mcp)
-        ├── supabase/         # Local Supabase (config.toml, migrations/)
-        └── openclaw/         # OpenClaw AI agent config + trading-cycle skill
+        ├── engine/           # Rust workspace: axum HTTP API + poly-{types,db,market,ai,engine,mcp} crates + migrations/
+        ├── frontend/         # Next.js app (app/, components/, lib/, actions/, hooks/, public/)
+        ├── infra/            # Terraform (EC2 + RDS + S3/CloudFront) for prod
+        ├── openclaw/         # OpenClaw MCP host config + reflect/trading-cycle skills + workspace/
+        └── supabase/         # Local Supabase (config.toml, migrations/)
 ```
 
-### SDK-First Architecture
+### Rust Engine Workspace
 
-All shared logic lives in three npm packages:
+All trading/business logic lives in the Rust workspace at `srcs/requirements/engine/`. The binary (`polyagents-engine`, `src/main.rs`) serves an axum HTTP API on port 8080 (loopback by default) for the frontend, gated behind a shared bearer token (`ENGINE_API_TOKEN`) for money/state-mutating routes. A separate MCP server (`poly-mcp`, `crates/poly-mcp/`) exposes the engine to AI agents over stdio.
 
-1. **`@polyagents/schema`** — Types, Zod schemas, constants, config (no business logic, no runtime deps)
-   - `src/types/` — Vault, EngineState, HederaContext, AgentHooks, TradeDecision, etc.
-   - `src/zod/` — strategyConfigSchema, engineStartSchema, marketTickSchema
-   - `src/constants/` — chain IDs, RPC URLs, engine defaults
-   - `src/config/` — Arc, Hedera, ENS configuration from env vars
-   - Location: `srcs/requirements/schema/src/`
-
-2. **`@polyagents/sdk`** — Business logic, imports schema
-   - `src/modules/hedera/` — Client, HCS logger, HTS vault, agent identity, payments, mirror node, scheduler, vault init
-   - `src/modules/arc/` — Arc market client (viem), ABI, betting, resolution, USDC helpers
-   - `src/modules/ens/` — Client, subname management, policy commitment, agent stats, fleet registry, vault metadata
-   - `src/modules/engine/` — Repositories (localStorage CRUD), PnL computation
-   - `src/modules/supabase/` — Supabase client factory, typed queries for all 8 tables
-   - `src/modules/store/` — Vault store, vault registry (in-memory)
-   - `src/modules/main.ts` — `PolyAgentsImpl` facade class exposing all modules
-   - `src/providers/` — Client factories (Hedera provider)
-   - Location: `srcs/requirements/sdk/src/`
-
-3. **`poly-mcp`** (Rust) — MCP server exposing the engine as composable AI tools over stdio
+- **`poly-types`** — Domain types: `Vault`, `StrategyConfig`, `EngineStatus`, `TradeOutcome`, `AppConfig`, etc.
+- **`poly-db`** — Postgres (sqlx) repositories: vaults, keypairs (AES-256-GCM encrypted), strategy configs, orders, pnl snapshots, audit events.
+- **`poly-market`** — Polymarket adapter (Gamma market discovery, CLOB order book + order placement, Polygon USDC/onchain).
+- **`poly-ai`** — OpenAI-compatible client (Craftshost gateway, default `gemma4:12b` via Ollama) + strategy prompt builder.
+- **`poly-engine`** — State machine + cycle loop + reconciler (closes trade outcomes against resolved markets; feeds decision→outcome into the OpenClaw learning loop via `active_guidance`).
+- **`poly-mcp`** — MCP server exposing the engine as composable AI tools over stdio
    - **18 tools** (`srcs/requirements/engine/crates/poly-mcp/src/server.rs`):
      - **Engine control:** `start_engine`, `stop_engine`, `engine_status`, `active_engines`, `cancel_orders`
      - **Vaults:** `list_vaults`, `get_vault`, `create_vault`
@@ -88,19 +68,18 @@ All shared logic lives in three npm packages:
      - **Funding:** `vault_agent_address`, `vault_balance`, `withdraw_vault`
    - All tools take `vault_id`; limit-bearing ones accept an optional `limit` (default 50–100).
    - No resources are exposed; everything is tool-based.
-   - (The old JS `@polyagents/mcp` server with `fetch_market`/`place_bet`/`hedera_health` etc. was removed in the Rust reorg — those tool names are ghosts, do not call them.)
 
 ### Frontend
 
 **Next.js 16.2** with App Router (React 19), TypeScript, Tailwind CSS 4, shadcn/ui.
 
-All pages are `'use client'` components. No Server Components, no API routes, no Server Actions.
+Most vault pages are `'use client'` components, but the data layer talks to the Rust engine via **Next.js Server Actions** (`actions/engine/index.ts`) and **API routes** (`app/api/engine/cron/{reconcile,repatriate}/route.ts`) that call the engine's HTTP API at `process.env.ENGINE_URL` (falling back to `http://localhost:8080`). Do not assume everything is client-side.
 
 ### MCP servers available
 
 Both Claude Code and OpenClaw connect to these MCP servers. Secrets (DB password, API keys) never live in committed config — they're read from the gitignored `.env` / `~/.openclaw/polyagents.env` (0600).
 
-- **`polyagents`** (Rust `poly-mcp`, stdio) — the engine. All 18 vault/engine/trading tools listed in the SDK-First section above. This is how the agent controls trading. Config: `~/.openclaw/openclaw.json` (OpenClaw) / launched by the host for Claude Code.
+- **`polyagents`** (Rust `poly-mcp`, stdio) — the engine. All 18 vault/engine/trading tools listed in the Rust Engine Workspace section above. This is how the agent controls trading. Config: `~/.openclaw/openclaw.json` (OpenClaw) / launched by the host for Claude Code.
 - **`postgres-supabase`** (`@modelcontextprotocol/server-postgres`, stdio) — **read-only** SQL + schema inspection against the Supabase Postgres backing the engine (`vaults`, `trade_outcomes`, `active_guidance`, `virtual_orders`, `pnl_snapshots`, `audit_events`, etc.). Use it to run ad-hoc `SELECT`s, inspect the schema, or verify what the reconciler wrote. Connection string is supplied via a wrapper script that reads the URL from the sidecar env — never inline it. Tools: `query` (read-only SQL), `list_tables`, `describe_table`, `schema_info`, etc.
 - **Host-provided utility servers** (Claude Code only, via `~/.claude.json`): `exa` (web search/fetch), `searxng` (meta web search), `zai-mcp-server` + `web-search-prime`/`web-reader`/`zread` (web search/read + GitHub repo reading), `terraform` (infra state). These are general-purpose research/ops tools, not PolyAgents-specific.
 
@@ -108,60 +87,58 @@ Both Claude Code and OpenClaw connect to these MCP servers. Secrets (DB password
 
 ```
 /                          → HomeClient (vault list + create CTA)
-/vault/create              → 5-step vault creation wizard
+/vault/create              → 4-step vault creation wizard (Identity → Strategy → Policy → Deploy)
 /vault/[id]                → Vault dashboard (KPIs, PnL chart, inventory, activity feed)
 /vault/[id]/markets        → Market browser with order book, AI fill probability, manual bid placement
 /vault/[id]/policy         → Strategy parameter editor with policy hash preview
 /vault/[id]/audit          → Full audit trail with chart, filters, CSV export
 /vault/[id]/agent          → Agent control panel (auto/advisory toggle, AI reasoning, cycle log)
-/vault/[id]/token          → HTS token gate status and NFT holdings display
+/vault/[id]/token          → Token gate placeholder (feature not implemented — "Token Gate Not Configured")
 ```
 
 ### Data Layer
 
 Two persistence layers:
 
-**Supabase (primary backend)** — `srcs/requirements/supabase/`
-- PostgreSQL via local Supabase containers (config.toml + migrations)
-- Typed queries in `@polyagents/sdk` → `modules/supabase/queries.ts`
-- 8 tables: vaults, engine_runs, engine_orders, engine_market_states, engine_pnl_snapshots, engine_audit, engine_configs, engine_books
-- Generated types via `supabase gen types typescript --local` → `schema/src/types/database.ts`
+**Postgres / Supabase (primary backend)** — engine migrations at `srcs/requirements/engine/migrations/`, local dev via Supabase containers at `srcs/requirements/supabase/` (config.toml).
+- The Rust engine owns these tables via `poly-db` (sqlx): `vaults`, `vault_keypairs` (AES-256-GCM encrypted), `engine_runs`, `virtual_orders`, `market_states`, `strategy_configs`, `pnl_snapshots`, `audit_events`, `cached_books`, `trade_outcomes`, `active_guidance` (11 tables — note the real names differ from the older `engine_*` schema in `docs/engine-proposal.md`).
+- The frontend reads engine state through the HTTP API (Server Actions) and Supabase for client reads, using `@supabase/supabase-js`.
 
-**localStorage (frontend demo / legacy)** — persists across reloads without backend
-- `lib/store.ts` — CRUD helpers over `localStorage`
-- `@polyagents/sdk` → `modules/engine/repositories.ts` — engine runs, orders, market state, PnL
-- Keys: `polyagents.vaults`, `polyagents.selectedVaultId`, `polyagents.demoVaultCreated`, `polyagents.engine.runs`, `.orders`, `.states`, `.pnl`, `.audits`, `.books`, `.configs`
+**localStorage (frontend demo / legacy)** — persists across reloads
+- `lib/store.ts` — CRUD helpers over `localStorage` (vault list, selected vault, demo flags). The authoritative engine state lives in Postgres; localStorage is the frontend's local cache/fallback.
 
 ### Layout & Navigation
 
 - `app/vault/[id]/layout.tsx` wraps all vault sub-routes with `StatusRail` (desktop sidebar) and `MobileNav` (bottom tab bar)
-- Vault is loaded from localStorage by URL param `[id]`; re-read on window focus event
+- The vault list/selection is held in localStorage (`lib/store.ts`); vaultId comes from the URL param `[id]`. Engine state is fetched from the Rust engine API on the vault pages.
 
 ### Key Domain Concepts
 
 The trading strategy (documented in `docs/Polymarket-Strategy.md`) operates as a state machine: IDLE → DISCOVERING_MARKET → READY → QUOTING → HOLDING_INVENTORY → EXPIRY_GUARD → ROLLING_OVER → RECONCILING. The current frontend simulates this via the `CycleButton` component and auto-mode interval in `AgentPage`.
 
-### Sponsor Integration docs
+### Sponsor Integration docs (HISTORICAL — not implemented)
 
-`docs/sponsors/` contains step-by-step implementation plans for each sponsor bounty:
-- **Arc** (`docs/sponsors/arc.md`) — Solidity `PolyAgentsMarket` for binary prediction markets with USDC on Arc Testnet
-- **Hedera** (`docs/sponsors/hedera.md`) — HTS token creation, HCS audit topics, HCS-14 agent identity, scheduled transactions, Mirror Node queries
-- **ENS** (`docs/sponsors/ens.md`) — Cryptographic commitment via ENS text records (`policy.commitment`) + live agent stats on vault subnames
+> `docs/sponsors/` and `docs/validation.md` are **pre-hackathon design plans** for Arc / Hedera / ENS sponsor integrations that were explored and then entirely stripped (commit `66f74c8`). **No sponsor code exists in the repo today** (no Arc contracts, no `@hashgraph/sdk`, no ENS module). Treat these as design history, not implemented features — do not follow them as build instructions.
 
-Other docs:
-- **Engine specification** (`docs/engine-proposal.md`) — Full Polymarket simulation engine with state machine, risk engine, fill simulator
-- **Validation** (`docs/validation.md`) — Prize track eligibility analysis ($9,500 across Arc + Hedera + ENS)
-- **User flows** (`docs/user-flow.md`) — All 10 user flows documented end-to-end
+- **Arc** (`docs/sponsors/arc.md`) — historical Solidity `PolyAgentsMarket` plan for Arc Testnet (not built)
+- **Hedera** (`docs/sponsors/hedera.md`) — historical HTS/HCS/HCS-14 plan (not built)
+- **ENS** (`docs/sponsors/ens.md`) — historical ENS text-record / ENSIP-25 plan (not built)
+
+Other docs (also historical):
+- **Engine specification** (`docs/engine-proposal.md`) — original proposal; table names (`engine_*`) differ from the actual migration schema in `srcs/requirements/engine/migrations/`
+- **Validation** (`docs/validation.md`) — the Arc+Hedera+ENS prize-eligibility analysis is obsolete; those integrations are not implemented
+- **User flows** (`docs/user-flow.md`) — written against the earlier 5-step / Hedera-stage flow; the current create wizard is 4 steps (no chain stages)
 
 ### Smart Contracts
 
-Arc prediction market contracts were stripped after pivoting to Polymarket-native trading. Arc integration now uses direct EVM calls via viem (see `@polyagents/sdk` → `modules/arc/`).
+There are no on-chain smart contracts. The earlier Arc `PolyAgentsMarket` Solidity contracts were stripped when the project pivoted to Polymarket-native trading. The only EVM usage is Polygon USDC / wallet reads via viem (`lib/polygon-wallet.ts`).
 
 ### OpenClaw
 
-`srcs/requirements/openclaw/` — OpenClaw MCP host config:
-- `openclaw.json` — MCP server config pointing to `../mcp/dist/index.js`
-- `skills/polyagents-trading-cycle/` — Autonomous trading skill definition + runner script
+`srcs/requirements/openclaw/` — OpenClaw MCP host config (the learning layer):
+- `openclaw.json` — MCP server config; the `polyagents` server runs the Rust `poly-mcp` binary (`srcs/requirements/engine/target/release/poly-mcp`), plus a `postgres-supabase` server. Secrets live in the gitignored sidecar `~/.openclaw/polyagents.env` (0600), installed by `scripts/setup-openclaw.sh`.
+- `skills/polyagents-reflect/` and `skills/polyagents-trading-cycle/` — autonomous reflect/trading skills
+- `workspace/` — `SOUL.md`, `HEARTBEAT.md`, `MEMORY.md`, `DREAMS.md`, `AGENTS.md`
 
 ## Tech Stack
 
@@ -170,12 +147,12 @@ Arc prediction market contracts were stripped after pivoting to Polymarket-nativ
 - **Tailwind CSS 4** with custom dark theme
 - **shadcn/ui** components
 - **Recharts** for PnL sparkline and audit bar chart
-- **Zod** for validation
-- **tsup** for package builds (ESM + CJS)
-- **@modelcontextprotocol/sdk** for MCP server
-- **viem** for Arc/ENS EVM interactions
-- **@hashgraph/sdk** for Hedera operations
-- **Supabase** (local) for PostgreSQL persistence — `@supabase/supabase-js` client with generated types
+- **Zod** for validation (frontend)
+- **Rust** engine — axum HTTP API + `poly-{types,db,market,ai,engine,mcp}` crates; MCP server via `rmcp`; sqlx for Postgres
+- **Craftshost / OpenAI-compatible LLM** (`gemma4:12b` via Ollama, routed via Langfuse) — see `poly-ai`
+- **viem** for Polygon USDC / wallet reads (NOT Arc/ENS — those do not exist)
+- **Privy** (`@privy-io/react-auth`) for wallet auth
+- **PostgreSQL** via Supabase (local dev) / managed Postgres (prod) — `@supabase/supabase-js` for frontend client reads
 
 ## Styling Conventions
 
@@ -191,12 +168,11 @@ Arc prediction market contracts were stripped after pivoting to Polymarket-nativ
 
 ## Conventions
 
-- **SDK-first**: All shared types in `@polyagents/schema`, business logic in `@polyagents/sdk`
-- **Import rewrites**: SDK uses `@polyagents/schema` instead of `@/types/*` path aliases
-- **Env vars**: SDK uses unprefixed vars (`HEDERA_OPERATOR_ID`, `ENS_OWNER_PRIVATE_KEY`, `ARC_PRIVATE_KEY`) instead of `NEXT_PUBLIC_*`
-- **Build order**: schema → sdk → mcp (each depends on the previous)
-- **MCP tools**: All chain operations exposed via `@polyagents/mcp` for AI agent consumption
-- **Supabase queries**: All database operations in `@polyagents/sdk` → `modules/supabase/queries.ts`, using generated `Database` types from `@polyagents/schema`
+- **Engine-first**: All trading/business logic lives in the Rust workspace (`srcs/requirements/engine/`); shared types in `poly-types`, DB access in `poly-db`, AI in `poly-ai`. The frontend calls the engine via the axum HTTP API (Server Actions in `actions/engine/`).
+- **Build order**: build the Rust engine (`cargo build --release`) before starting the frontend or the MCP host; the frontend Server Actions expect the engine on `ENGINE_URL` / `localhost:8080`.
+- **Env vars**: `NEXT_PUBLIC_*` vars are inlined into the browser bundle at build time (Privy app id, Supabase URL/anon key, engine URL). Server-side secrets (`POLYMARKET_*`, `OPENAI_*`, `DATABASE_URL`, `VAULT_ENCRYPTION_KEY`, `ENGINE_API_TOKEN`) stay server-side. See `.env.example` for the authoritative list.
+- **MCP tools**: all engine operations exposed via the Rust `poly-mcp` server (18 tools) for AI agent consumption over stdio.
+- **DB access**: all Postgres operations go through `poly-db` (sqlx, parameterized). The frontend uses `@supabase/supabase-js` for client reads.
 
 ## Skills
 
@@ -210,9 +186,8 @@ The following skills are installed in `.claude/skills/`. Consult their `SKILL.md
 
 ## External APIs Referenced
 
-- **Polymarket Gamma API** (`https://gamma-api.polymarket.com`) — market discovery and search
-- **Polymarket CLOB API** — order book and trading (planned)
-- **Hedera Mirror Node** (`https://testnet.mirrornode.hedera.com/api/v1`) — audit log queries
-- **Arc Testnet RPC** — EVM interactions for prediction markets
-- **ENS (Sepolia)** — text record commits, subname management
-- **Supabase (local)** — `http://127.0.0.1:54321` — PostgreSQL for vault/engine persistence
+- **Polymarket Gamma API** (`https://gamma-api.polymarket.com`) — BTC 5-min market discovery and search
+- **Polymarket CLOB API** — order book reads and order placement (live `demo`/`true` modes; requires `POLYMARKET_API_*` + signing key)
+- **Craftshost LLM gateway** (`https://openai.craftshost.com`, OpenAI-compatible) — `gemma4:12b` via Ollama, routed via Langfuse (requires `OPENAI_API_KEY` + `OPENAI_PUBLIC_KEY`)
+- **Polygon RPC** (`POLYGON_RPC_URL`) — USDC / wallet reads via viem
+- **Supabase (local)** — `http://127.0.0.1:54321` — local PostgreSQL for vault/engine persistence (prod uses managed Postgres via Terraform RDS)

@@ -101,15 +101,23 @@ resource "aws_security_group" "engine" {
     from_port   = var.engine_port
     to_port     = var.engine_port
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    # Engine API is restricted to known CIDRs (defaults to the VPC CIDR).
+    # An empty list produces no ingress rule, which effectively denies the port.
+    cidr_blocks = length(var.engine_allowed_cidrs) > 0 ? var.engine_allowed_cidrs : null
   }
 
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  # SSH ingress is only attached when at least one CIDR is provided.
+  # Default is an empty list (deny all) — use SSM Session Manager or a bastion
+  # instead of exposing port 22 to the internet.
+  dynamic "ingress" {
+    for_each = length(var.ssh_allowed_cidrs) > 0 ? [1] : []
+    content {
+      description = "SSH"
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      cidr_blocks = var.ssh_allowed_cidrs
+    }
   }
 
   egress {
@@ -172,9 +180,15 @@ resource "aws_db_instance" "postgres" {
   vpc_security_group_ids = [aws_security_group.db.id]
   availability_zone      = var.availability_zone
 
-  skip_final_snapshot      = true
-  delete_automated_backups = true
-  backup_retention_period  = 1
+  # Keep automated backups for a meaningful retention window and always take a
+  # final snapshot on destroy so production data (trades, vault state, orders)
+  # is recoverable. `skip_final_snapshot` and `delete_automated_backups` are
+  # intentionally omitted (both default to false).
+  backup_retention_period = 14
+  # Name is unique per destroy run via a timestamp suffix to avoid clashes.
+  final_snapshot_identifier = "${var.project}-db-final-${formatdate("YYYYMMDDHHmmss", timestamp())}"
+
+  deletion_protection = var.environment == "prod" ? true : false
 
   tags = { Name = "${var.project}-db" }
 }
@@ -201,6 +215,17 @@ resource "aws_instance" "engine" {
   user_data = templatefile("${path.module}/user-data.sh", {
     database_url = "postgres://${var.rds_username}:${var.rds_password}@${aws_db_instance.postgres.address}:5432/${var.rds_db_name}?sslmode=require"
     engine_port  = var.engine_port
+    # RDS connectivity is checked by a wait loop at boot. These drive the timeout.
+    db_host = aws_db_instance.postgres.address
+    db_port = 5432
+    # OpenAI config is injected only when supplied via Terraform; an unset key
+    # is written out as a commented line so the engine never sees an empty
+    # OPENAI_API_KEY value (which would still satisfy env::var and 401).
+    openai_api_base = var.openai_api_base
+    # The literal .env line for the key — real assignment when a key is set,
+    # or a commented placeholder otherwise.
+    openai_key_line = var.openai_api_key != "" ? "OPENAI_API_KEY=${var.openai_api_key}" : "# OPENAI_API_KEY=  # not provided at provision time — set before starting the engine"
+    openai_model    = var.openai_model
   })
 
   tags = { Name = "${var.project}-engine" }

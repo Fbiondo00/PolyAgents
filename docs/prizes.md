@@ -1,3 +1,7 @@
+> **REFERENCE ONLY — NOT AN ELIGIBILITY CLAIM.** This file is a copy of the public prize pages for the Arc, ENS, and Hedera sponsor bounties. It is kept as reference on what each track requires. **PolyAgents has NOT implemented the Arc, Hedera, or ENS integrations** (they were removed — see commit `66f74c8`) and does **not** meet the hard requirements of any of these bounties. Do not treat the bounty amounts listed here as winnings PolyAgents has earned or is eligible for. This doc should not be submitted or presented as evidence of completed work.
+
+---
+
 Arc logo
 Arc
 $15,000

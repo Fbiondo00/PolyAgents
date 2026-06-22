@@ -1,3 +1,7 @@
+> **UN-IMPLEMENTED DESIGN DOC — DO NOT SUBMIT AS DONE.** This is a pre-hackathon step-by-step **plan** for a Hedera integration (HTS tokens, HCS audit topics, HBAR micropayments, HCS-14 agent identity, scheduled transactions, Mirror Node queries). **None of it was implemented.** There is no `src/hedera/` or `lib/hedera/` module, no `@hashgraph/sdk` usage, and no Hedera testnet calls in this repo (the Hedera integration was removed — see commit `66f74c8`). The code blocks below are reference sketches, not working code. Do not present this document as evidence of a completed Hedera bounty (neither "No Solidity Allowed" nor "AI & Agentic Payments"). It is retained only as a reference design.
+
+---
+
 Ecco il piano di esecuzione esatto, in ordine di implementazione. Copia-incolla ogni blocco nell'ordine dato — nessun passo dipende da qualcosa che non è ancora stato creato.
 Implementazione Hedera — Esecuzione Step by Step
 🔧 STEP 0 — Installa e Configura (5 minuti)

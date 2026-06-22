@@ -2,7 +2,7 @@
 
 This document describes every user flow in the application, end-to-end. PolyAgents is a demo/prototype for ETHGlobal Cannes 2026 — an AI-powered autonomous trading vault for Polymarket BTC 5-minute binary markets, integrating Arc (EVM), Hedera (HTS/HCS/HBAR payments), and ENS.
 
-All state is currently stored in `localStorage` (see `lib/store.ts`). No backend or database is wired yet — all trading cycles and chain interactions are simulated in the frontend.
+State is persisted by a Rust engine backend with PostgreSQL (via Supabase). The frontend talks to the engine over HTTP through `lib/engine-api.ts` (which wraps the `engine` client for vault CRUD, audit, engine control, orders, PnL, market state, books, agent address, on-chain balance, and withdrawals). `lib/store.ts` delegates all reads and writes to these engine RPC calls — it no longer touches `localStorage`. The Rust engine (see `srcs/requirements/engine/`, crates `poly-db`, `poly-types`, `poly-market`, `poly-engine`, `poly-mcp`) owns the trading-cycle state machine and writes the 8 PostgreSQL tables defined in the Supabase migration (`00001_initial_schema.sql`).
 
 ---
 
@@ -16,34 +16,33 @@ All state is currently stored in `localStorage` (see `lib/store.ts`). No backend
 2. On first visit, a **demo vault** ("BTC Scalper Demo") is auto-initialized via `initDemoVault()` in `lib/store.ts`. It comes pre-populated with sample inventory, PnL history, audit events, and a simulated active market.
 3. The home page displays:
    - A hero section with project branding.
-   - A list of all existing vaults (from localStorage key `polyagents.vaults`).
+   - A list of all existing vaults (fetched from the Rust engine via `getVaults()`).
    - A "Create Vault" call-to-action button.
 4. User taps a vault card to navigate to `/vault/[id]` (the vault dashboard).
 5. User taps "Create Vault" to navigate to `/vault/create`.
 
 ---
 
-## Flow 2: Create Vault (5-Step Wizard)
+## Flow 2: Create Vault (4-Step Wizard)
 
 **Route:** `/vault/create`
 
 **Component:** `CreateVaultPage` (`app/vault/create/page.tsx`)
 
-This is a 5-step wizard with a stepper UI at the top:
+This is a 4-step wizard with a stepper UI at the top (Identity → Strategy → Policy → Deploy):
 
 ### Step 0 — Identity
 - User enters a **vault name** (minimum 2 characters).
-- User clicks **Privy Connect** (mocked via `PrivyConnectMock` component) to simulate wallet connection. In production, the real integration will use `@privy-io/react-auth` for multi-chain wallet authentication (email, social login, or wallet connect) providing instant testnet wallet creation with auto-funded Arc USDC, Hedera HBAR, and Polygon MATIC. Judges log in via email, see the deployed vault live in 30s with no MetaMask setup. For a live demo, you you need zero-friction UX — email login → funded wallet → scalping. No server setup, no DB setup, no seed/migration. For multi-vault/multi-operator support, a unified dashboard across all flows.
- Currently mocked — the real integration will use `@privy-io/react-auth` for multi-chain wallet authentication (email, social login, or wallet connect) providing instant testnet wallet creation with auto-funded Arc USDC, Hedera HBAR, and Polygon MATIC.
-- Both fields must be filled to proceed.
+- User clicks **Connect Wallet** to authenticate via Privy (`@privy-io/react-auth` — `usePrivy` / `useWallets`, calling `login()`). Privy provides multi-chain wallet authentication (email, social login, or wallet connect). The connected wallet address is captured and stored on the vault.
+- Both fields must be filled to proceed (name ≥ 2 chars + an authenticated wallet).
 
 ### Step 1 — Strategy
 - User configures strategy parameters via `StrategyForm`:
-  - `bidPrice` — default $0.01 (the extreme-low passive buy price)
-  - `sellPrice` — default $0.02 (the immediate flip sell target)
+  - `bidPrice` — default $0.20 (the passive buy price)
+  - `sellPrice` — default $0.25 (the immediate flip sell target)
   - `maxCapital` — max USDC exposure cap
-  - `trancheSize` — shares per order (default 15)
-  - `noNewEntriesLast` — seconds before expiry to stop entering (default 30)
+  - `trancheSize` — shares per order (default 10)
+  - `noNewEntriesLast` — seconds before expiry to stop entering (default 10)
   - `keepSellAfter` — grace period for sell orders after expiry (default 10)
   - `aiEnabled` — toggle AI microstructure analysis
 - Validation: sell price must be > bid price.
@@ -54,25 +53,12 @@ This is a 5-step wizard with a stepper UI at the top:
   - **Auto** — Agent executes autonomously within strategy bounds.
 - A JSON preview of the policy (name + mode + strategy) is shown.
 
-### Step 3 — Funding
-- User enters **USDC amount** to allocate (default $100).
-- A summary shows USDC deposit + 1.0 HBAR reserve.
-
-### Step 4 — Deploy
-- User reviews a final summary table (name, mode, bid/sell, max capital, USDC).
-- Clicking **"Deploy Vault"** triggers a simulated 8-stage deployment sequence:
-  1. Minting HTS token
-  2. Registering HCS topic
-  3. Submitting strategy hash
-  4. Funding vault
-  5. Activating agent
-  6. Provisioning order gateway
-  7. Verifying policy
-  8. Vault live!
-- Each stage takes ~1 second (pure `setTimeout` simulation).
-- A new `Vault` object is created with zeroed stats, the configured strategy, a random active market, and an initial audit event.
-- The vault is persisted to `localStorage` via `saveVault()`.
-- After deployment completes, user is auto-redirected to `/vault/[id]`.
+### Step 3 — Deploy
+- User reviews a final summary table (name, mode, bid/sell, max capital).
+- Clicking **"Deploy Vault"** shows a spinner while the vault is created.
+- A new `Vault` object is created with zeroed stats, the configured strategy, funding `{ usdc: 100, hbar: 0 }`, a random active market, and an initial `ai-analysis` audit event.
+- The vault is persisted via `saveVault()`, which calls the Rust engine over HTTP (`engine.createVault` / `engine.updateVault`) — the engine writes PostgreSQL. (There is no per-stage deployment sequence and no on-chain Hedera/HCS/HTS steps in the frontend flow.)
+- After deployment completes (~1.2s), the user is auto-redirected to `/vault/[id]`.
 
 ---
 
@@ -95,8 +81,7 @@ This is the main operational view:
 3. **PnL History** — sparkline chart (`PnLSparkline` using Recharts) of cumulative PnL.
 4. **Inventory Card** — shows UP shares and DOWN shares held.
 5. **Active Market** — market ID, mid price, expiry countdown (`ExpiryCountdown`), with link to Markets page.
-6. **HCS Feed** — simulated Hedera Consensus Service message feed (`HCSFeed` component).
-7. **Recent Activity** — last 5 audit events from the vault, with links to full audit trail.
+6. **Recent Activity** — last 5 audit events from the vault, with links to full audit trail.
 
 ---
 
@@ -164,7 +149,7 @@ When the agent is in **Auto mode**, cycles run automatically every ~12 seconds:
 2. As parameters change, a **policy hash** is recomputed in real-time (simple JS hash function simulating `keccak256`). The hash is displayed in `PolicyHashCard`.
 3. User clicks **"Save Policy"**:
    - 3-second simulated hash computation delay.
-   - Vault is updated in localStorage.
+   - Vault is updated via `saveVault()` (which calls the Rust engine).
    - Toast confirms the save with the hash prefix.
 
 ---
@@ -205,22 +190,21 @@ When the agent is in **Auto mode**, cycles run automatically every ~12 seconds:
 
 - **Desktop:** `StatusRail` component provides a vertical sidebar with icons for Dashboard, Markets, Policy, Audit, Agent, Token pages.
 - **Mobile:** `MobileNav` component provides a bottom tab bar with the same navigation options.
-- The vault layout (`app/vault/[id]/layout.tsx`) reads the vault from localStorage by `[id]` param and passes it to both nav components.
+- The vault layout (`app/vault/[id]/layout.tsx`) reads the vault from the Rust engine (via `getVaultById()`) using the `[id]` param and passes it to both nav components.
 
 ---
 
 ## State Architecture
 
-All flows depend on a single `Vault` type (`lib/types.ts`) persisted in `localStorage`:
+All flows depend on a single `Vault` type (`types/vault.ts`) persisted by the Rust engine in PostgreSQL. The frontend never reads or writes `localStorage` for vault state — every read and write goes through HTTP calls to the engine.
 
-| Key | Purpose |
-|-----|---------|
-| `polyagents.vaults` | Array of all `Vault` objects |
-| `polyagents.selectedVaultId` | Currently selected vault ID |
-| `polyagents.demoVaultCreated` | Flag to prevent re-creating the demo vault |
+**Persistence path:** frontend component → `lib/store.ts` helper → `engine` client in `lib/engine-api.ts` → HTTP `fetch` to `NEXT_PUBLIC_ENGINE_URL` (default `http://localhost:8080`) → Rust `poly-engine` / `poly-mcp` → PostgreSQL (Supabase, 8 tables per `00001_initial_schema.sql`).
 
-Key mutations are performed through helper functions in `lib/store.ts`:
-- `saveVault()` / `getVaultById()` / `deleteVault()` — CRUD
-- `addAuditEvent()` — prepend event (max 200)
-- `updateVaultStats()` — increment cycles, accumulate PnL, update sparkline
-- `initDemoVault()` — first-run seeding
+Key mutations are performed through async helper functions in `lib/store.ts`:
+- `saveVault()` / `getVaultById()` / `deleteVault()` — CRUD (delegate to `engine.createVault` / `engine.updateVault` / `engine.getVault` / `engine.deleteVault`)
+- `getVaults()` — list all vaults (delegates to `engine.listVaults`)
+- `addAuditEvent()` — client-side stub; audit events are written by the Rust engine itself
+- `updateVaultStats()` — increment cycles, accumulate PnL, update sparkline (re-reads vault, then `saveVault`)
+- `initDemoVault()` — first-run seeding of the demo vault
+
+Engine-only endpoints (audit, engine control, orders, PnL, market state, books, agent address, on-chain balance, withdrawals) are called directly via the `engine` client from `lib/engine-api.ts` (e.g. by the dashboard's `lib/engine/repositories.ts` helpers).

@@ -52,6 +52,23 @@ impl TradingEngine {
     }
 
     pub async fn start_vault(&self, vault_id: &str) -> Result<String> {
+        // Duplicate-start guard: reject if a run is already active for this
+        // vault. Without this, repeated start calls (or a dual MCP + HTTP
+        // caller) would spawn multiple concurrent state loops for the same
+        // vault, each placing independent orders and double-counting PnL.
+        {
+            let runs = self.runs.read().await;
+            if runs
+                .iter()
+                .any(|r| r.vault_id == vault_id && r.status == EngineRunStatus::Running)
+            {
+                return Err(anyhow::anyhow!(
+                    "Vault {} already has an active engine run",
+                    vault_id
+                ));
+            }
+        }
+
         let vault = poly_db::vaults::get_by_id(&self.pool, vault_id)
             .await?
             .ok_or_else(|| anyhow::anyhow!("Vault {} not found", vault_id))?;
@@ -112,10 +129,30 @@ impl TradingEngine {
 
     pub async fn stop_vault(&self, vault_id: &str) -> Result<()> {
         let mut runs = self.runs.write().await;
-        if let Some(run) = runs.iter_mut().find(|r| r.vault_id == vault_id && r.status == EngineRunStatus::Running) {
+
+        // Collect the IDs of every active run for this vault up front. Stopping
+        // by `find()` would only stop the first match, leaving any duplicates
+        // (created before the start guard existed) running in the background.
+        let to_stop: Vec<String> = runs
+            .iter()
+            .filter(|r| r.vault_id == vault_id && r.status == EngineRunStatus::Running)
+            .map(|r| r.id.clone())
+            .collect();
+
+        if to_stop.is_empty() {
+            // No active run for this vault: surface an explicit error rather
+            // than a silent Ok so callers (MCP tool, HTTP handler) can't be
+            // misled into believing an unknown/other-process vault was stopped.
+            return Err(anyhow::anyhow!(
+                "No active engine run found for vault {}",
+                vault_id
+            ));
+        }
+
+        let now = chrono::Utc::now().timestamp_millis();
+        for run in runs.iter_mut().filter(|r| to_stop.contains(&r.id)) {
             run.status = EngineRunStatus::Stopped;
             run.current_state = EngineState::Idle;
-            let now = chrono::Utc::now().timestamp_millis();
             poly_db::engine_runs::stop(&self.pool, &run.id, now).await?;
             tracing::info!(vault_id = vault_id, run_id = %run.id, "Stopped engine");
         }

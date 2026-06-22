@@ -46,6 +46,15 @@ async fn main() -> Result<()> {
     let ai = AiClient::new(config.ai.clone());
 
     let engine = TradingEngine::new(config, pool, market, ai);
+
+    // Spawn the reconciliation loop so OPEN trade outcomes (fills + PnL) get
+    // closed once their markets resolve. When only the MCP process runs (e.g.
+    // launched standalone by OpenClaw), nothing else reconciles, so outcomes
+    // would stay OPEN forever and the self-learning loop would never see
+    // realized results. Safe to call once at startup; runs for process lifetime.
+    engine.spawn_reconciler();
+    tracing::info!("Reconciler spawned (sweeps OPEN trade outcomes)");
+
     let state = Arc::new(EngineState::new(engine));
     let server = PolyMcpServer::new(state);
 

@@ -10,15 +10,31 @@ import { PrivyProvider } from '@privy-io/react-auth'
  * server-side rendering (and during `next build`'s prerender pass) the env may
  * be a placeholder, so we defer mounting Privy until after the component has
  * hydrated on the client, where the real NEXT_PUBLIC_PRIVY_APP_ID is present.
- * Until then we render the children bare — pages are all 'use client' and gate
- * their own auth UI, so the brief un-wrapped render is a no-op shell.
+ *
+ * The children must NEVER render before PrivyProvider is mounted. Every page
+ * calls `usePrivy()`/`useWallets()` unconditionally at the top of its body, and
+ * those hooks throw ('must be used within a PrivyProvider') when no provider is
+ * in the context tree — the underlying context is internal to
+ * @privy-io/react-auth and cannot be stubbed from the outside. Rendering the
+ * children bare during that window (the previous behavior) therefore crashed
+ * the whole app on first render / prerender.
+ *
+ * To keep those hooks safe, until the real provider has mounted we render a
+ * minimal, provider-free placeholder (an empty shell) instead of the children.
+ * Returning `null` guarantees no `useWallets()`/`usePrivy()` call executes
+ * without a PrivyProvider ancestor. The mounted flag flips on the first
+ * `useEffect` (post-hydration on the client), at which point the children
+ * render inside the real PrivyProvider and the hooks resolve normally. The
+ * brief empty shell is invisible to users and avoids the white-screen crash.
  */
 export function Providers({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
   if (!mounted) {
-    return <>{children}</>
+    // Provider-free shell: intentionally NOT rendering `children` here, because
+    // they call Privy hooks that throw outside of a PrivyProvider.
+    return null
   }
 
   return (

@@ -6,7 +6,11 @@
 import type { ActiveMarketData } from "@/types/workflow"
 import { engine } from "@/lib/engine-api"
 
-const API = process.env.NEXT_PUBLIC_ENGINE_URL ?? "http://localhost:8080"
+// Server-only: read the engine URL from the non-public server-side env var.
+// NEXT_PUBLIC_* vars are inlined into the client bundle at build time, which both
+// (a) leaks the internal engine hostname to every browser, and (b) freezes the
+// value at build time so it can't differ per-deploy (e.g. Docker/K8s DNS).
+const API = process.env.ENGINE_URL ?? "http://localhost:8080"
 
 async function apiPost<T>(path: string): Promise<T> {
   const res = await fetch(`${API}${path}`, { method: "POST", headers: { "Content-Type": "application/json" } })
@@ -95,10 +99,24 @@ export async function fetchActiveMarket(vaultId: string): Promise<ActiveMarketDa
     const market = (market_state as Record<string, unknown>).market as Record<string, unknown> | null
     if (!market) return null
 
+    // The Rust Market struct serializes `end_date` as `Option<String>`
+    // (e.g. "2026-06-20T12:00:00Z"). Casting that string to `number` via `as`
+    // yields NaN — and `NaN ?? 0` evaluates to NaN (NaN is not nullish), so the
+    // countdown silently breaks. Parse the ISO string to epoch ms instead, and
+    // fall back to 0 only when the value is missing or unparseable.
+    const endDateRaw = market.end_date
+    const endTs =
+      typeof endDateRaw === "string"
+        ? Date.parse(endDateRaw)
+        : typeof endDateRaw === "number"
+          ? endDateRaw
+          : NaN
+    const safeEndTs = Number.isFinite(endTs) ? endTs : 0
+
     return {
       question: market.question as string ?? "",
       slug: market.slug as string ?? "",
-      endTs: (market.end_date as number) ?? 0,
+      endTs: safeEndTs,
       conditionId: market.condition_id as string ?? "",
       yesTokenId: "",
       noTokenId: "",

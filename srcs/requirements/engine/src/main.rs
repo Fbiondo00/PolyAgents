@@ -1,19 +1,21 @@
 use anyhow::Result;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Request, State},
+    Extension,
     http::StatusCode,
+    middleware::{from_fn_with_state, Next},
     routing::{get, post},
     Json, Router,
 };
 use clap::Parser;
 use serde_json::{json, Value};
 use std::sync::Arc;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use poly_ai::AiClient;
 use poly_db::create_pool;
 use poly_engine::TradingEngine;
-use poly_market::PolymarketAdapter;
+use poly_market::{MarketAdapter, PolymarketAdapter};
 use poly_types::config::AppConfig;
 
 #[derive(Parser)]
@@ -23,13 +25,115 @@ struct Cli {
     #[arg(short, long, default_value = ".env")]
     config: String,
 
-    /// Host to bind
-    #[arg(long, default_value = "0.0.0.0")]
+    /// Host to bind. Defaults to loopback (127.0.0.1) so the engine — which moves
+    /// real USDC — is never exposed to the network by accident. Pass `--host
+    /// 0.0.0.0` (or a specific interface) to bind externally, and pair it with
+    /// `ENGINE_API_TOKEN` + a restrictive CORS policy.
+    #[arg(long, default_value = "127.0.0.1")]
     host: String,
 
     /// Port to bind
     #[arg(short, long, default_value_t = 8080)]
     port: u16,
+}
+
+/// Shared authorization state for the money-moving route group.
+///
+/// `expected_token` is `None` when `ENGINE_API_TOKEN` is unset; in that mode
+/// the middleware rejects every protected request (fail-closed) rather than
+/// silently allowing unauthenticated fund movement.
+#[derive(Clone)]
+struct AuthState {
+    expected_token: Option<String>,
+}
+
+/// Authorization middleware: requires a `Authorization: Bearer <token>` header
+/// whose token matches `ENGINE_API_TOKEN` exactly (constant-time comparison).
+/// Mounted only on the protected route group via `from_fn_with_state`.
+async fn require_api_token(
+    State(auth): State<Arc<AuthState>>,
+    request: Request,
+    next: Next,
+) -> Result<axum::response::Response, StatusCode> {
+    use axum::http::header::AUTHORIZATION;
+
+    let expected = match &auth.expected_token {
+        Some(t) => t,
+        // No token configured → fail-closed. The startup log warns about this.
+        None => {
+            tracing::warn!("Protected route hit with no ENGINE_API_TOKEN configured");
+            return Err(StatusCode::FORBIDDEN);
+        }
+    };
+
+    let provided = request
+        .headers()
+        .get(AUTHORIZATION)
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .map(str::trim);
+
+    match provided {
+        Some(p) if constant_time_eq(p.as_bytes(), expected.as_bytes()) => Ok(next.run(request).await),
+        _ => {
+            tracing::warn!("Rejected protected request: missing or invalid API token");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
+}
+
+/// Constant-time byte comparison to avoid timing side-channels on the token.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
+/// Build the CORS layer from `ENGINE_CORS_ORIGINS` (comma-separated). Defaults
+/// to a loopback-only policy. `*` explicitly opts into a permissive policy
+/// (intended only behind an authenticating reverse proxy).
+fn build_cors_layer() -> CorsLayer {
+    let raw = std::env::var("ENGINE_CORS_ORIGINS").unwrap_or_default();
+    let origins: Vec<&str> = raw
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let allow_origin = match origins.as_slice() {
+        // Default: loopback only — safe for local dev, never exposes the fund-
+        // moving API to arbitrary cross-origin browsers.
+        [] => AllowOrigin::list([
+            "http://localhost:3000".parse::<axum::http::HeaderValue>().unwrap(),
+            "http://127.0.0.1:3000".parse::<axum::http::HeaderValue>().unwrap(),
+        ]),
+        // Explicit wildcard: caller takes responsibility (documented above).
+        [single] if *single == "*" => AllowOrigin::mirror_request(),
+        // Explicit allow-list.
+        list => {
+            let parsed: Vec<axum::http::HeaderValue> = list
+                .iter()
+                .filter_map(|o| o.parse::<axum::http::HeaderValue>().ok())
+                .collect();
+            AllowOrigin::list(parsed)
+        }
+    };
+
+    CorsLayer::new()
+        .allow_origin(allow_origin)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([axum::http::header::AUTHORIZATION, axum::http::header::CONTENT_TYPE])
 }
 
 #[tokio::main]
@@ -55,27 +159,53 @@ async fn main() -> Result<()> {
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     let http = reqwest::Client::new();
-    let market = PolymarketAdapter::new(&config.polymarket, http.clone());
+    // One adapter drives the engine; a second (stateless) adapter is attached to
+    // the HTTP router as an Extension so the cancel_orders handler can issue live
+    // CLOB cancels. Both wrap the same reqwest::Client + PolymarketConfig, so the
+    // duplicate is cheap and shares connection pooling.
     let ai = AiClient::new(config.ai.clone());
+    let market_for_router = Arc::new(PolymarketAdapter::new(&config.polymarket, http.clone()));
+    let market_for_engine = PolymarketAdapter::new(&config.polymarket, http);
 
-    let engine = Arc::new(TradingEngine::new(config, pool, market, ai));
+    let engine = Arc::new(TradingEngine::new(config, pool, market_for_engine, ai));
 
     // Spawn the reconciliation loop: closes out OPEN trade outcomes (fills +
     // PnL) once their markets resolve. Runs for the process lifetime.
     engine.spawn_reconciler();
 
-    let app = Router::new()
+    // Authorization: every state- or money-mutating route is gated behind a
+    // shared bearer token (`ENGINE_API_TOKEN`). Read-only inspection routes
+    // (status, orders, pnl, audit, market-state, books, balance) remain open
+    // for dashboards. If no token is configured the protected routes refuse
+    // every request (fail-closed) and we log a loud warning at startup so a
+    // misconfigured deploy cannot silently run unprotected.
+    let api_token = std::env::var("ENGINE_API_TOKEN")
+        .ok()
+        .filter(|s| !s.is_empty());
+    if api_token.is_none() {
+        tracing::warn!(
+            "ENGINE_API_TOKEN is unset — all money/state-mutating routes will reject requests. \
+             Set ENGINE_API_TOKEN to enable withdrawals, vault mutations, and engine control."
+        );
+    }
+    let auth_state = Arc::new(AuthState {
+        expected_token: api_token,
+    });
+
+    // CORS is configurable via ENGINE_CORS_ORIGINS (comma-separated). The
+    // default is the most restrictive safe policy: only loopback origins are
+    // allowed. There is intentionally no permissive fallback — this API moves
+    // real USDC, so a wildcard CORS policy would be a cross-site fund-drain
+    // vector. Use `ENGINE_CORS_ORIGINS=*` only behind a locked-down reverse
+    // proxy that adds its own auth.
+    let cors = build_cors_layer();
+
+    // Public routes: liveness + read-only inspection (no secrets, no mutations).
+    // These intentionally sit OUTSIDE the auth middleware so dashboards and
+    // orchestrator healthchecks can reach them without a bearer token.
+    let public = Router::new()
         .route("/health", get(health))
-        .route("/vaults", get(list_vaults).post(create_vault))
-        .route("/vaults/{id}", get(get_vault).put(update_vault).delete(delete_vault))
-        .route("/vaults/{id}/config", get(get_config).put(update_config))
-        .route("/vaults/{id}/agent-address", get(get_agent_address))
-        .route("/vaults/{id}/balance", get(get_balance))
-        .route("/vaults/{id}/withdraw", post(withdraw))
-        .route("/engine/{vault_id}/start", post(start_engine))
-        .route("/engine/{vault_id}/stop", post(stop_engine))
         .route("/engine/{vault_id}/status", get(engine_status))
-        .route("/engine/{vault_id}/cancel-orders", post(cancel_orders))
         .route("/engine/active", get(active_engines))
         .route("/engine-runs/{vault_id}", get(get_engine_run))
         .route("/orders/{vault_id}", get(get_orders))
@@ -83,10 +213,41 @@ async fn main() -> Result<()> {
         .route("/audit/{vault_id}", get(get_audit))
         .route("/market-state/{vault_id}", get(get_market_state))
         .route("/books/{vault_id}", get(get_books))
-        .layer(CorsLayer::permissive())
+        .route("/vaults/{id}/agent-address", get(get_agent_address))
+        .route("/vaults/{id}/balance", get(get_balance))
         .with_state(engine.clone());
 
+    // Protected routes: anything that creates/deletes/updates a vault, mutates
+    // strategy config, controls the engine, cancels orders, or moves funds. The
+    // auth middleware is applied to THIS router only, then it is merged with the
+    // public router — so axum routes auth per-path rather than globally.
+    let protected = Router::new()
+        .route("/vaults", get(list_vaults).post(create_vault))
+        .route("/vaults/{id}", get(get_vault).put(update_vault).delete(delete_vault))
+        .route("/vaults/{id}/config", get(get_config).put(update_config))
+        .route("/vaults/{id}/withdraw", post(withdraw))
+        .route("/engine/{vault_id}/start", post(start_engine))
+        .route("/engine/{vault_id}/stop", post(stop_engine))
+        .route("/engine/{vault_id}/cancel-orders", post(cancel_orders))
+        // The market adapter is attached as an Extension so the cancel_orders
+        // handler can cancel live CLOB orders without widening every handler's
+        // State type.
+        .layer(axum::Extension(market_for_router.clone()))
+        .layer(from_fn_with_state(auth_state, require_api_token))
+        .with_state(engine.clone());
+
+    let app = public
+        .merge(protected)
+        .layer(cors);
+
     let addr = format!("{}:{}", cli.host, cli.port);
+    if cli.host == "0.0.0.0" {
+        tracing::warn!(
+            "Binding to 0.0.0.0:{} — engine is reachable from every network interface. \
+             Ensure ENGINE_API_TOKEN is set and CORS is locked down.",
+            cli.port
+        );
+    }
     tracing::info!("PolyAgents engine listening on {}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -118,8 +279,24 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn health() -> Json<Value> {
-    Json(json!({ "status": "ok", "service": "polyagents-engine" }))
+/// Liveness + readiness: returns 503 if the database is unreachable so an
+/// orchestrator's `depends_on: condition: service_healthy` actually blocks
+/// downstream services until the engine can serve real traffic, not just until
+/// the TCP socket is open.
+async fn health(State(engine): State<Arc<TradingEngine>>) -> Result<Json<Value>, StatusCode> {
+    let pool = get_pool(&engine);
+    // Cheapest round-trip that proves the pool has a live Postgres connection.
+    match sqlx::query("SELECT 1").execute(pool).await {
+        Ok(_) => Ok(Json(json!({
+            "status": "ok",
+            "service": "polyagents-engine",
+            "database": "ok",
+        }))),
+        Err(e) => {
+            tracing::error!("Health check database probe failed: {}", e);
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
+    }
 }
 
 async fn list_vaults(State(engine): State<Arc<TradingEngine>>) -> Result<Json<Value>, StatusCode> {
@@ -251,22 +428,73 @@ async fn engine_status(
 
 async fn cancel_orders(
     State(engine): State<Arc<TradingEngine>>,
+    Extension(market): Extension<Arc<PolymarketAdapter>>,
     Path(vault_id): Path<String>,
 ) -> Result<Json<Value>, StatusCode> {
     let pool = get_pool(&engine);
-    match poly_db::orders::get_open_by_vault(pool, &vault_id).await {
-        Ok(orders) => {
-            tracing::info!(vault_id = vault_id, count = orders.len(), "Cancelling open orders");
-            Ok(Json(json!({
-                "cancelled": orders.len(),
-                "status": "ok"
-            })))
+
+    // Read open orders first so we can cancel each live one on the CLOB before
+    // flipping their DB status. Previously this handler only *read* the orders
+    // and returned the count, leaving both the venue and the DB untouched — a
+    // no-op that silently lied about having cancelled anything.
+    let orders = poly_db::orders::get_open_by_vault(pool, &vault_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Cancel orders (read) error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let mut clob_cancelled = 0usize;
+    let mut clob_failed = 0usize;
+
+    for order in &orders {
+        // Simulated orders never reached the CLOB (`POLYMARKET_LIVE=false`), so
+        // there is nothing to cancel there — only the DB row needs updating,
+        // which cancel_by_vault handles below.
+        if order.simulated {
+            continue;
         }
-        Err(e) => {
-            tracing::error!("Cancel orders error: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        match market.cancel_order(&order.id).await {
+            Ok(()) => clob_cancelled += 1,
+            Err(e) => {
+                // Don't abort the whole sweep on one bad cancel: still mark the
+                // DB row cancelled locally so the operator can reconcile.
+                clob_failed += 1;
+                tracing::warn!(
+                    vault_id = vault_id,
+                    order_id = %order.id,
+                    error = %e,
+                    "CLOB cancel failed (will still mark DB cancelled)"
+                );
+            }
         }
     }
+
+    // Flip every OPEN/PARTIALLY_FILLED row for this vault to CANCELLED.
+    let db_cancelled = poly_db::orders::cancel_by_vault(pool, &vault_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Cancel orders (db) error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    tracing::info!(
+        vault_id = vault_id,
+        open_orders = orders.len(),
+        clob_cancelled,
+        clob_failed,
+        db_rows_cancelled = db_cancelled,
+        "Cancelled open orders"
+    );
+
+    Ok(Json(json!({
+        "vault_id": vault_id,
+        "open_orders": orders.len(),
+        "clob_cancelled": clob_cancelled,
+        "clob_failed": clob_failed,
+        "db_rows_cancelled": db_cancelled,
+        "status": "ok"
+    })))
 }
 
 async fn active_engines(State(engine): State<Arc<TradingEngine>>) -> Json<Value> {
@@ -524,11 +752,48 @@ async fn withdraw(
 
     let recipient = body["recipient"]
         .as_str()
-        .ok_or_else(|| StatusCode::BAD_REQUEST)?;
+        .ok_or(StatusCode::BAD_REQUEST)?;
     let amount = body["amount"]
         .as_str()
-        .ok_or_else(|| StatusCode::BAD_REQUEST)?;
+        .ok_or(StatusCode::BAD_REQUEST)?;
 
+    // Validate the recipient looks like an EVM address before doing any key
+    // work. Rejects empty/garbage strings that previously would have been
+    // forwarded straight to the transfer builder.
+    let recipient = recipient.trim();
+    if !(recipient.starts_with("0x") && recipient.len() == 42) {
+        tracing::warn!(recipient = recipient, "Withdraw rejected: invalid recipient");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Validate the amount is a positive finite number. Previously any string
+    // (including "" or "abc") was forwarded to the transfer builder; only a
+    // late f64 parse there would catch it, and there was no upper bound at all.
+    let amount_f: f64 = amount.parse().map_err(|_| {
+        tracing::warn!(amount = amount, "Withdraw rejected: amount is not a number");
+        StatusCode::BAD_REQUEST
+    })?;
+    if !amount_f.is_finite() || amount_f <= 0.0 {
+        tracing::warn!(amount = amount, "Withdraw rejected: amount must be > 0");
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    // Per-withdraw sanity ceiling to stop a single call from draining an
+    // unexpectedly large balance (e.g. a misconfigured funder top-up). Override
+    // via ENGINE_MAX_WITHDRAW_USDC if a vault legitimately needs more.
+    let max_withdraw: f64 = std::env::var("ENGINE_MAX_WITHDRAW_USDC")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1_000.0);
+    if amount_f > max_withdraw {
+        tracing::warn!(
+            amount = amount,
+            max = max_withdraw,
+            "Withdraw rejected: exceeds ENGINE_MAX_WITHDRAW_USDC"
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // Decrypt the per-vault signing key.
     let private_key = poly_db::keypairs::decrypt_for_signing(
         pool,
         &id,
@@ -539,6 +804,38 @@ async fn withdraw(
         tracing::error!("Decrypt key for withdrawal error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
+
+    // Fetch the agent's on-chain USDC balance and refuse overdrafts. This runs
+    // *after* key decryption so an unauthorized caller (blocked by the auth
+    // middleware) cannot probe balances, but before broadcasting the transfer.
+    let agent_address = poly_db::keypairs::get_address(pool, &id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Get address for withdrawal error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let balance_str = poly_market::onchain::get_usdc_balance(
+        &config.polygon_rpc_url,
+        &config.polygon_usdc_address,
+        &agent_address,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Balance check for withdrawal error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let balance_f: f64 = balance_str.parse().unwrap_or(0.0);
+    if amount_f > balance_f {
+        tracing::warn!(
+            vault_id = id,
+            amount = amount,
+            balance = balance_str,
+            "Withdraw rejected: amount exceeds on-chain balance"
+        );
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     match poly_market::onchain::transfer_usdc(
         &config.polygon_rpc_url,

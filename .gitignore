@@ -7,9 +7,11 @@ __v0_jsx-dev-runtime.ts
 .vercel/
 next.user-config.*
 
-# Environment variables
-.env*.local
+# Environment variables (keep .env.example committed)
 .env
+.env.*
+*.env
+!.env.example
 
 # Common ignores
 node_modules
@@ -19,6 +21,12 @@ tsconfig.tsbuildinfo
 
 # Server-side vault registry (runtime data)
 .vault-registry.json
+
+# Runtime engine state / cached credentials
+.engine-store.json
+
+# Local Claude Code settings (per-machine permissions, may hold local paths)
+.claude/settings.local.json
 
 # Rust build artifacts
 target/

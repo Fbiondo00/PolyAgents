@@ -10,7 +10,9 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
-use crate::params::*;
+use crate::params::{
+    clamp_limit, sanitize_guidance, validate_amount, validate_recipient, validate_vault_id, *,
+};
 use crate::state::EngineState;
 
 #[derive(Clone)]
@@ -33,6 +35,7 @@ impl PolyMcpServer {
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("start_engine"))?;
         match self.state.engine.start_vault(&vault_id).await {
             Ok(run_id) => json_result(serde_json::json!({
                 "run_id": run_id,
@@ -50,6 +53,7 @@ impl PolyMcpServer {
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("stop_engine"))?;
         match self.state.engine.stop_vault(&vault_id).await {
             Ok(()) => json_result(serde_json::json!({ "status": "stopped" })),
             Err(e) => Err(McpError::internal_error(
@@ -64,16 +68,20 @@ impl PolyMcpServer {
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("engine_status"))?;
         match self.state.engine.get_status(&vault_id).await {
             Some((status, state)) => json_result(serde_json::json!({
                 "vault_id": vault_id,
-                "status": format!("{:?}", status),
-                "state": format!("{:?}", state),
+                // Use the Display impls so the wire format matches the DB /
+                // HTTP handler (lowercase "running", uppercase "IDLE"), not the
+                // Debug form ("Running") which breaks consumer pattern matching.
+                "status": status.to_string(),
+                "state": state.to_string(),
             })),
             None => json_result(serde_json::json!({
                 "vault_id": vault_id,
                 "status": "stopped",
-                "state": "Idle",
+                "state": "IDLE",
             })),
         }
     }
@@ -83,6 +91,7 @@ impl PolyMcpServer {
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("cancel_orders"))?;
         let pool = self.state.engine.pool();
         match poly_db::orders::cancel_by_vault(pool, &vault_id).await {
             Ok(count) => json_result(serde_json::json!({
@@ -96,13 +105,16 @@ impl PolyMcpServer {
         }
     }
 
-    #[tool(description = "List all actively running engines.")]
+    #[tool(description = "List all actively running engines tracked by this MCP process.")]
     async fn active_engines(&self) -> Result<CallToolResult, McpError> {
         let active = self.state.engine.list_active().await;
         json_result(serde_json::json!({
+            // NOTE: reflects only engines started within THIS poly-mcp process.
+            // The HTTP engine process keeps its own separate in-memory run list,
+            // so vaults started via HTTP will not appear here.
             "engines": active.iter().map(|(id, state)| serde_json::json!({
                 "vault_id": id,
-                "state": format!("{:?}", state),
+                "state": state.to_string(),
             })).collect::<Vec<_>>()
         }))
     }
@@ -124,10 +136,17 @@ impl PolyMcpServer {
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("get_vault"))?;
         let pool = self.state.engine.pool();
         match poly_db::vaults::get_by_id(pool, &vault_id).await {
             Ok(Some(vault)) => json_result(serde_json::json!({ "vault": vault })),
-            Ok(None) => Err(McpError::invalid_params("vault_not_found", None)),
+            // The parameters were valid; the resource simply does not exist.
+            // Use resource_not_found rather than invalid_params so consumers do
+            // not mistake this for a malformed id and retry with other formats.
+            Ok(None) => Err(McpError::resource_not_found(
+                "vault_not_found",
+                Some(serde_json::json!({ "vault_id": vault_id })),
+            )),
             Err(e) => Err(McpError::internal_error(
                 "get_vault_failed",
                 Some(serde_json::json!({ "error": e.to_string() })),
@@ -145,7 +164,7 @@ impl PolyMcpServer {
 
         let vault_id = uuid::Uuid::new_v4().to_string();
 
-        // Generate per-vault keypair
+        // Generate per-vault keypair up front (no DB writes yet).
         let (private_key_hex, public_address) = poly_db::keypairs::generate_keypair()
             .map_err(|e| McpError::internal_error(
                 "keypair_generation_failed",
@@ -159,15 +178,8 @@ impl PolyMcpServer {
                 Some(serde_json::json!({ "error": e.to_string() })),
             ))?;
 
-        poly_db::keypairs::insert(pool, &vault_id, &encrypted, &public_address, &salt)
-            .await
-            .map_err(|e| McpError::internal_error(
-                "keypair_insert_failed",
-                Some(serde_json::json!({ "error": e.to_string() })),
-            ))?;
-
         let vault = poly_types::vault::Vault {
-            id: vault_id,
+            id: vault_id.clone(),
             name: params.name.unwrap_or_else(|| "New Vault".into()),
             wallet_address: params.wallet_address,
             strategy: params.strategy.unwrap_or(serde_json::json!({})),
@@ -181,16 +193,35 @@ impl PolyMcpServer {
             created: chrono::Utc::now().timestamp_millis(),
         };
 
-        match poly_db::vaults::insert(pool, &vault).await {
-            Ok(()) => json_result(serde_json::json!({
-                "vault": vault,
-                "agent_address": public_address,
-            })),
-            Err(e) => Err(McpError::internal_error(
+        // Insert the vault row BEFORE its keypair: vault_keypairs.vault_id has a
+        // FOREIGN KEY ... REFERENCES vaults(id), so inserting the keypair first
+        // violates the constraint. If the keypair insert then fails, we roll
+        // back by deleting the just-inserted vault row so no orphan rows remain.
+        // (Matches the FK ordering used by the HTTP engine handler.)
+        poly_db::vaults::insert(pool, &vault)
+            .await
+            .map_err(|e| McpError::internal_error(
                 "create_vault_failed",
                 Some(serde_json::json!({ "error": e.to_string() })),
-            )),
+            ))?;
+
+        if let Err(e) = poly_db::keypairs::insert(pool, &vault_id, &encrypted, &public_address, &salt).await {
+            // Cleanup the orphan vault row so a retry is not blocked by a
+            // half-created vault with no keypair.
+            let _ = sqlx::query("DELETE FROM vaults WHERE id = $1")
+                .bind(&vault_id)
+                .execute(pool)
+                .await;
+            return Err(McpError::internal_error(
+                "keypair_insert_failed",
+                Some(serde_json::json!({ "error": e.to_string() })),
+            ));
         }
+
+        json_result(serde_json::json!({
+            "vault": vault,
+            "agent_address": public_address,
+        }))
     }
 
     #[tool(description = "Update strategy configuration for a vault.")]
@@ -198,9 +229,15 @@ impl PolyMcpServer {
         &self,
         Parameters(params): Parameters<UpdateConfigParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&params.vault_id).map_err(bad_param("update_config"))?;
         let pool = self.state.engine.pool();
 
-        // Load existing config or use defaults
+        // PARTIAL-UPDATE semantics: only fields supplied as Some(value) are
+        // changed; every other field is preserved from the existing stored
+        // config (falling back to defaults only if none exists). This matches
+        // RFC 7396 JSON Merge Patch intent — send `{ "enabled": false }` to
+        // toggle one knob without touching entry_price / order_size / etc.
+        // (Consumers needing a full reset should send every field explicitly.)
         let existing = poly_db::vaults::get_strategy_config(pool, &params.vault_id)
             .await
             .ok()
@@ -262,6 +299,7 @@ impl PolyMcpServer {
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("get_orders"))?;
         let pool = self.state.engine.pool();
         match poly_db::orders::get_open_by_vault(pool, &vault_id).await {
             Ok(orders) => json_result(serde_json::json!({ "orders": orders })),
@@ -278,8 +316,11 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(VaultLimitParams { vault_id, limit }): Parameters<VaultLimitParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("get_recent_outcomes"))?;
         let pool = self.state.engine.pool();
-        let limit = limit.unwrap_or(50) as i64;
+        // Clamp to a safe upper bound so a huge consumer-supplied value cannot
+        // ask Postgres to materialize millions of rows and OOM the process.
+        let limit = clamp_limit(limit, 50);
         match poly_db::outcomes::get_recent(pool, &vault_id, limit).await {
             Ok(outcomes) => json_result(serde_json::json!({ "outcomes": outcomes })),
             Err(e) => Err(McpError::internal_error(
@@ -294,6 +335,7 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("get_active_guidance"))?;
         let pool = self.state.engine.pool();
         match poly_db::guidance::get(pool, &vault_id).await {
             Ok(guidance) => json_result(serde_json::json!({
@@ -312,13 +354,26 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(GuidanceParams { vault_id, guidance }): Parameters<GuidanceParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("set_active_guidance"))?;
+        // Guidance is injected verbatim into the trading AI's prompt each cycle,
+        // so it is sanitized before persistence: a hard length cap rejects
+        // oversized payloads and ASCII control characters are stripped to blunt
+        // prompt-injection / obfuscation attempts. A value over the cap is
+        // rejected (not silently truncated) so the caller knows it was ignored.
+        let (sanitized, err) = sanitize_guidance(&guidance);
+        if let Some(msg) = err {
+            return Err(McpError::invalid_params(
+                "invalid_guidance",
+                Some(serde_json::json!({ "error": msg })),
+            ));
+        }
         let pool = self.state.engine.pool();
         let now = chrono::Utc::now().timestamp_millis();
-        match poly_db::guidance::set(pool, &vault_id, &guidance, now).await {
+        match poly_db::guidance::set(pool, &vault_id, &sanitized, now).await {
             Ok(()) => json_result(serde_json::json!({
                 "status": "set",
                 "vault_id": vault_id,
-                "guidance": guidance,
+                "guidance": sanitized,
             })),
             Err(e) => Err(McpError::internal_error(
                 "set_active_guidance_failed",
@@ -332,8 +387,9 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(VaultLimitParams { vault_id, limit }): Parameters<VaultLimitParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("get_pnl"))?;
         let pool = self.state.engine.pool();
-        let limit = limit.unwrap_or(100) as i64;
+        let limit = clamp_limit(limit, 100);
         match poly_db::pnl::get_history(pool, &vault_id, limit).await {
             Ok(snapshots) => json_result(serde_json::json!({ "snapshots": snapshots })),
             Err(e) => Err(McpError::internal_error(
@@ -348,8 +404,9 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(VaultLimitParams { vault_id, limit }): Parameters<VaultLimitParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("get_audit"))?;
         let pool = self.state.engine.pool();
-        let limit = limit.unwrap_or(100) as i64;
+        let limit = clamp_limit(limit, 100);
         match poly_db::audit::get_by_vault(pool, &vault_id, limit).await {
             Ok(events) => json_result(serde_json::json!({ "events": events })),
             Err(e) => Err(McpError::internal_error(
@@ -364,13 +421,17 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("vault_agent_address"))?;
         let pool = self.state.engine.pool();
         match poly_db::keypairs::get_address(pool, &vault_id).await {
             Ok(Some(address)) => json_result(serde_json::json!({
                 "vault_id": vault_id,
                 "agent_address": address,
             })),
-            Ok(None) => Err(McpError::invalid_params("no_keypair_for_vault", None)),
+            Ok(None) => Err(McpError::resource_not_found(
+                "no_keypair_for_vault",
+                Some(serde_json::json!({ "vault_id": vault_id })),
+            )),
             Err(e) => Err(McpError::internal_error(
                 "get_agent_address_failed",
                 Some(serde_json::json!({ "error": e.to_string() })),
@@ -383,6 +444,7 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(VaultIdParams { vault_id }): Parameters<VaultIdParams>,
     ) -> Result<CallToolResult, McpError> {
+        validate_vault_id(&vault_id).map_err(bad_param("vault_balance"))?;
         let pool = self.state.engine.pool();
         let config = self.state.engine.config();
 
@@ -392,7 +454,10 @@ Each item joins an AI trading decision to what actually happened: the decision c
                 "get_address_failed",
                 Some(serde_json::json!({ "error": e.to_string() })),
             ))?
-            .ok_or_else(|| McpError::invalid_params("no_keypair_for_vault", None))?;
+            .ok_or_else(|| McpError::resource_not_found(
+                "no_keypair_for_vault",
+                Some(serde_json::json!({ "vault_id": vault_id })),
+            ))?;
 
         match poly_market::onchain::get_usdc_balance(
             &config.polygon_rpc_url,
@@ -418,6 +483,13 @@ Each item joins an AI trading decision to what actually happened: the decision c
         &self,
         Parameters(WithdrawParams { vault_id, recipient, amount }): Parameters<WithdrawParams>,
     ) -> Result<CallToolResult, McpError> {
+        // Validate at the tool boundary so malformed values fail here with a
+        // clear error instead of producing a cryptic RPC failure deep in the
+        // on-chain transfer call.
+        validate_vault_id(&vault_id).map_err(bad_param("withdraw_vault"))?;
+        validate_recipient(&recipient).map_err(bad_param("withdraw_vault"))?;
+        validate_amount(&amount).map_err(bad_param("withdraw_vault"))?;
+
         let pool = self.state.engine.pool();
         let config = self.state.engine.config();
 
@@ -480,4 +552,18 @@ fn json_result(value: serde_json::Value) -> Result<CallToolResult, McpError> {
     Ok(CallToolResult::success(vec![Content::text(
         serde_json::to_string_pretty(&value).unwrap_or_default(),
     )]))
+}
+
+/// Build a closure that converts a validation error message into an MCP
+/// `invalid_params` error tagged with the originating tool name. Used with
+/// `?` after each input check: `validate_vault_id(&id).map_err(bad_param("..."))?;`
+fn bad_param(tool: &'static str) -> impl Fn(String) -> McpError {
+    move |message: String| {
+        McpError::invalid_params(
+            // Keep the tool name as the structured message so consumers can tell
+            // which tool rejected the input; the human-readable reason goes in data.
+            tool,
+            Some(serde_json::json!({ "error": message })),
+        )
+    }
 }

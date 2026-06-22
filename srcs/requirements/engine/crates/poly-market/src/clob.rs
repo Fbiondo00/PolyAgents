@@ -131,11 +131,19 @@ impl ClobClient {
         address: &str,
         payload: &serde_json::Value,
     ) -> Result<OrderResult> {
+        let body = serde_json::to_string(payload)?;
+        let headers = build_l2_headers(&self.config, "POST", "/order", address, &body)?;
+
         let resp = self
             .http
             .post(format!("{}/order", self.base_url))
             .header("POLY-ADDRESS", address)
-            .json(payload)
+            .header("POLY-API-KEY", headers.api_key)
+            .header("POLY-SIGNATURE", headers.signature)
+            .header("POLY-TIMESTAMP", headers.timestamp)
+            .header("POLY-PASSPHRASE", headers.passphrase)
+            .header("Content-Type", "application/json")
+            .body(body)
             .send()
             .await?
             .error_for_status()
@@ -162,12 +170,40 @@ impl ClobClient {
     }
 
     pub async fn cancel_order(&self, order_id: &str) -> Result<()> {
+        // Simulated/non-live mode: there is no live order on the CLOB to cancel,
+        // so return success without touching the exchange. This keeps the
+        // simulated path as the default, matching `simulate()` above.
+        if !self.config.live {
+            tracing::info!(
+                order_id = %order_id,
+                "Simulated cancel (POLYMARKET_LIVE=false): no live CLOB call"
+            );
+            return Ok(());
+        }
+
+        // Live mode: POST /order with an array of order ids to cancel. The
+        // Polymarket CLOB cancel endpoint requires the full L2 auth headers.
+        let path = "/order";
+        let body = serde_json::json!({ "orderIDs": [order_id] }).to_string();
+        let address = crate::signing::derive_address(&self.config.private_key)
+            .unwrap_or_else(|_| String::new());
+        let headers = build_l2_headers(&self.config, "POST", path, &address, &body)?;
+
         self.http
-            .delete(format!("{}/order/{}", self.base_url, order_id))
+            .post(format!("{}{}", self.base_url, path))
+            .header("POLY-ADDRESS", address)
+            .header("POLY-API-KEY", headers.api_key)
+            .header("POLY-SIGNATURE", headers.signature)
+            .header("POLY-TIMESTAMP", headers.timestamp)
+            .header("POLY-PASSPHRASE", headers.passphrase)
+            .header("Content-Type", "application/json")
+            .body(body)
             .send()
             .await?
             .error_for_status()
             .map_err(|e| anyhow::anyhow!("CLOB cancel failed for {}: {}", order_id, e))?;
+
+        tracing::info!(order_id = %order_id, "Live CLOB order cancelled");
         Ok(())
     }
 }
@@ -195,4 +231,74 @@ fn parse_price_levels(v: &serde_json::Value) -> Vec<PriceLevel> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Polymarket CLOB L2 authentication headers. Every authenticated write
+/// (`POST /order`, `POST /order` cancel) must attach all five of these or the
+/// CLOB rejects the request as unauthenticated (see audit finding: "submit_order
+/// missing required API key authentication headers").
+///
+/// Reference scheme:
+///   POLY-API-KEY    -> config.api_key
+///   POLY-SIGNATURE  -> base64( HMAC-SHA256( base64_decode(config.api_secret),
+///                                           timestamp + method + path + body ) )
+///   POLY-TIMESTAMP  -> unix seconds (string)
+///   POLY-PASSPHRASE -> config.api_passphrase
+///   POLY-ADDRESS    -> derived EOA address (attached at the call site)
+pub struct L2Headers {
+    pub api_key: String,
+    pub signature: String,
+    pub timestamp: String,
+    pub passphrase: String,
+}
+
+/// Build the L2 auth header set for a CLOB request.
+///
+/// `method`, `path`, and `body` form the canonical message that the server
+/// re-derives and verifies. `address` is the wallet address of the signer
+/// (used for the `POLY-ADDRESS` header at the call site).
+pub fn build_l2_headers(
+    config: &PolymarketConfig,
+    method: &str,
+    path: &str,
+    address: &str,
+    body: &str,
+) -> Result<L2Headers> {
+    let timestamp = chrono::Utc::now().timestamp().to_string();
+
+    // Canonical message: "<timestamp><method><path><body>".
+    let message = format!("{timestamp}{method}{path}{body}");
+
+    // TODO(l2-signing): implement the HMAC-SHA256 signature per the Polymarket
+    // CLOB spec. The signature is base64(HMAC-SHA256(base64_decode(api_secret),
+    // message)). This requires the `hmac`, `sha2`, and `base64` crates to be
+    // added to poly-market/Cargo.toml:
+    //   let key = base64::decode(&config.api_secret)?;
+    //   let mut mac = Hmac::<Sha256>::new_from_slice(&key)?;
+    //   mac.update(message.as_bytes());
+    //   let signature = base64::encode(mac.finalize().into_bytes());
+    // Until those deps are wired up, we emit a clearly-invalid placeholder so a
+    // misconfigured live call fails loudly at the CLOB (401) rather than being
+    // silently sent without the header set. Live trading must not be enabled
+    // until this TODO is implemented and validated.
+    let signature = if config.api_secret.is_empty() {
+        String::new()
+    } else {
+        tracing::warn!(
+            "L2 HMAC signing not implemented (TODO): sending placeholder POLY-SIGNATURE; \
+             live CLOB call for {} {} will be rejected until signing is wired up",
+            method,
+            path
+        );
+        format!("UNSIGNED_TODO_{}", hex::encode(message.as_bytes()))
+    };
+
+    let _ = (address,);
+
+    Ok(L2Headers {
+        api_key: config.api_key.clone(),
+        signature,
+        timestamp,
+        passphrase: config.api_passphrase.clone(),
+    })
 }

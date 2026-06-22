@@ -43,7 +43,11 @@ be patient between beats.
 
 ## Tool inventory (the real MCP tools)
 
-### `polyagents` — engine control + learning loop
+poly-mcp exports exactly **18 tools** (one `#[tool]` per async fn in
+`crates/poly-mcp/src/server.rs`). This is the full list — verify any future
+change against that count.
+
+### `polyagents` — engine control + learning loop (18 tools)
 
 Engine control: `start_engine`, `stop_engine`, `engine_status`, `active_engines`,
 `cancel_orders`.
@@ -52,7 +56,7 @@ Observation: `get_recent_outcomes` (the feedback signal — your primary read),
 `get_orders`, `get_pnl`, `get_audit`, `get_vault`, `list_vaults`.
 
 Strategy (your write authority): `update_config`, `set_active_guidance`,
-`get_active_guidance` (Phase 3).
+`get_active_guidance`.
 
 Funding: `vault_agent_address`, `vault_balance`, `withdraw_vault`, `create_vault`.
 
@@ -61,6 +65,8 @@ The ghosts are gone: there is no `hedera_health`, `fetch_market`, `place_bet`,
 
 ### `postgres-supabase` — read-only SQL against the engine's database
 
+A **second** registered MCP server (`openclaw mcp add postgres-supabase ...`,
+see `openclaw.json` `mcp.servers`), not a polyagents tool. Backed by
 `@modelcontextprotocol/server-postgres`, **read-only**. Use it to inspect raw
 state behind the engine tools — the same tables `get_recent_outcomes` /
 `get_pnl` / `get_audit` read from, plus anything not surfaced by a tool.

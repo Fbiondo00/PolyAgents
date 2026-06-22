@@ -12,8 +12,13 @@
 #   4. Builds the poly-mcp binary (release) and registers it as the MCP server,
 #      passing engine env vars from the repo .env (secrets never stored in
 #      openclaw.json).
-#   5. Installs the two skills.
-#   6. Applies heartbeat + dreaming + skill-workshop config.
+#   5. Installs the postgres-supabase read-only SQL MCP server behind a wrapper
+#      that reads SUPABASE_POSTGRES_URL (falling back to DATABASE_URL) from the
+#      sidecar env — the connection string is NEVER inlined in openclaw.json.
+#   6. Installs the two skills.
+#   7. Applies heartbeat + dreaming + skill-workshop config.
+#   8. Reminds you to configure an LLM provider (heartbeat/dreaming need one);
+#      the engine's OPENAI_* (Craftshost) is reused.
 #
 # Prereqs: node/npm, a running Postgres reachable via $DATABASE_URL, and the
 # repo .env populated. Run from anywhere; paths resolve from the script location.
@@ -128,6 +133,70 @@ openclaw mcp add polyagents \
   --env "POLYAGENTS_ENV_FILE=$SIDECAR" \
   >/dev/null
 
+# --- 4b. Register postgres-supabase (read-only SQL) ------------------------
+# Documented in workspace/AGENTS.md (query / schema_info / list_tables /
+# describe_table). Backed by @modelcontextprotocol/server-postgres, but wrapped
+# so the Postgres connection string (which embeds a password) is NEVER inlined
+# in openclaw.json or passed on the CLI. The wrapper reads
+# SUPABASE_POSTGRES_URL (falling back to DATABASE_URL) from the sidecar env at
+# boot and exports it as the connection string the server reads.
+PG_WRAPPER_DIR="$HOME/.openclaw/bin"
+PG_WRAPPER="$PG_WRAPPER_DIR/postgres-mcp.sh"
+mkdir -p "$PG_WRAPPER_DIR"
+
+cat > "$PG_WRAPPER" <<'WRAPPER'
+#!/usr/bin/env bash
+# postgres-mcp.sh — launch the read-only postgres MCP server for OpenClaw.
+#
+# Connection string is sourced from the PolyAgents sidecar env (never inlined).
+# Looks for SUPABASE_POSTGRES_URL first (the read-only/inspector path), then
+# falls back to DATABASE_URL. POLYAGENTS_ENV_FILE is set by the MCP registration
+# to ~/.openclaw/polyagents.env (mode 0600, written by setup-openclaw.sh).
+set -euo pipefail
+
+ENV_FILE="${POLYAGENTS_ENV_FILE:-$HOME/.openclaw/polyagents.env}"
+
+# Parse the sidecar for the connection string (do NOT source it — values may
+# contain shell metacharacters; we only need the URL).
+pg_url=""
+if [[ -f "$ENV_FILE" ]]; then
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"
+    [[ -z "${line// }" ]] && continue
+    case "$line" in
+      SUPABASE_POSTGRES_URL=*)
+        pg_url="${line#SUPABASE_POSTGRES_URL=}"; pg_url="${pg_url//\'}"; pg_url="${pg_url//\"}"
+        break ;;
+      DATABASE_URL=*)
+        [[ -z "$pg_url" ]] && { pg_url="${line#DATABASE_URL=}"; pg_url="${pg_url//\'}"; pg_url="${pg_url//\"}"; } ;;
+    esac
+  done < "$ENV_FILE"
+fi
+
+if [[ -z "$pg_url" ]]; then
+  printf '[postgres-mcp] no SUPABASE_POSTGRES_URL or DATABASE_URL in %s\n' "$ENV_FILE" >&2
+  exit 1
+fi
+
+# Prefer a locally installed server; fall back to npx (downloads on first run).
+if command -v mcp-server-postgres >/dev/null 2>&1; then
+  exec mcp-server-postgres "$pg_url"
+fi
+exec npx --yes "@modelcontextprotocol/server-postgres" "$pg_url"
+WRAPPER
+chmod 755 "$PG_WRAPPER"
+say "wrote postgres MCP wrapper: $PG_WRAPPER"
+
+say "registering MCP server 'postgres-supabase'"
+# Remove + re-add so the registration stays in sync on re-runs. The connection
+# string is NOT passed here — the wrapper reads it from the sidecar.
+openclaw mcp unset postgres-supabase >/dev/null 2>&1 || true
+openclaw mcp add postgres-supabase \
+  --command "$PG_WRAPPER" \
+  --no-probe \
+  --env "POLYAGENTS_ENV_FILE=$SIDECAR" \
+  >/dev/null
+
 # --- 5. Install skills -------------------------------------------------------
 say "installing skills"
 openclaw skills install "$OPENCLAW_DIR/skills/polyagents-reflect" --as polyagents-reflect --force >/dev/null
@@ -148,6 +217,33 @@ openclaw config set plugins.entries.memory-core.config.dreaming.frequency '"0 3 
 
 openclaw config set skills.workshop.autonomous.enabled true --strict-json >/dev/null
 openclaw config set skills.workshop.approvalPolicy '"auto"' --strict-json >/dev/null
+
+# --- 7b. Probe MCP servers (fail fast on a broken binary/wrapper) -----------
+# setup uses --no-probe during registration for speed; probe now so a runtime
+# failure (missing dynamic lib, bad wrapper, unreachable DB) surfaces here
+# instead of on the first silent heartbeat. Treat a probe failure as fatal.
+for srv in polyagents postgres-supabase; do
+  if openclaw mcp probe "$srv" >/dev/null 2>&1; then
+    say "mcp probe ok: $srv"
+  else
+    err "mcp probe FAILED for '$srv' — run 'openclaw mcp probe $srv' for details"
+    exit 1
+  fi
+done
+
+# --- 8. LLM provider reminder ----------------------------------------------
+# The heartbeat + dreaming turns need an LLM; the MCP/skill wiring above is
+# useless without one. We do NOT write a key into openclaw.json (secret-free).
+# Reuse the engine's Craftshost (OpenAI-compatible) gateway already in .env:
+#   openclaw configure   # point at https://openai.craftshost.com + OPENAI_API_KEY
+# or set it directly:
+#   openclaw config set model.provider '"openai"'
+#   openclaw config set model.baseURL  '"https://openai.craftshost.com"'
+#   openclaw config set model.model    "\"$OPENAI_MODEL\""
+if [[ -z "$(openclaw config get model.provider 2>/dev/null)" ]]; then
+  err "no LLM provider configured — heartbeat/dreaming will produce nothing."
+  err "  run 'openclaw configure' (point at the Craftshost gateway, reusing OPENAI_*)."
+fi
 
 say "done. Next: start the engine + Postgres, then run 'openclaw chat' or 'openclaw agent'."
 say "verify:  openclaw mcp list   |   openclaw skills list   |   openclaw config get agents.defaults.heartbeat"

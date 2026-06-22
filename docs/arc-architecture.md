@@ -1,5 +1,7 @@
 # PolyAgents — Architecture
 
+> **DESIGN DOC — CONTAINS UN-IMPLEMENTED INTEGRATIONS.** The diagrams and tables below describe a target architecture that includes **Arc, Hedera, and ENS sponsor integrations. None of these three integrations are implemented** — there is no `PolyAgentsMarket.sol` contract, no Hedera HTS/HCS/HCS-14 code, and no ENS subname/text-record code in this repo (all three were removed — see commit `66f74c8`). The Arc (`lib/arc/`), Hedera (`lib/hedera/`), and ENS (`lib/ens/`) file listings in this doc point at modules that **do not exist**. Treat the Mermaid diagrams as aspirational, not a description of the running system. Do not present this document as evidence of completed sponsor bounties. The implemented parts (Next.js UI, Server Actions, the Rust/TypeScript trading engine, Polymarket CLOB/Gamma adapter, Privy wallet auth) are real; the three sponsor chains are not.
+
 ## System Overview
 
 ```mermaid

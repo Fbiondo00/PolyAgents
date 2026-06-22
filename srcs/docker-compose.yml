@@ -48,6 +48,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    # Cap Postgres so its buffer cache can't starve the engine/frontend (see
+    # finding: unbounded DB memory triggered OOM-kill restart loops). Bump for
+    # a larger dataset; this is a floor for a small single-host deploy.
+    mem_limit: 512m
+    cpus: 1.0
     networks:
       - polyagents
 
@@ -70,12 +75,26 @@ services:
         condition: service_healthy
     ports:
       - "8080:8080"
+    # Real readiness probe: hits the engine's GET /health route, which runs
+    # `SELECT 1` against Postgres and returns 503 if the DB is unreachable.
+    # This proves the HTTP server is up AND migrations/connection pool are
+    # live — so `depends_on: engine: condition: service_healthy` only unblocks
+    # the frontend once the engine can actually serve traffic. (The old
+    # `polyagents-engine --help` probe returned 0 even if the engine had
+    # crashed on startup.) Requires `wget` in the engine image — see the
+    # engine Dockerfile's apt-get install line.
     healthcheck:
-      test: ["CMD", "polyagents-engine", "--help"]
+      test:
+        - "CMD-SHELL"
+        - "wget -qO- --spider --tries=1 http://localhost:8080/health || exit 1"
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
+    # Bound the long-running trading process so a leak can't OOM the host or
+    # the co-located db/frontend. Bump for a larger active-vault count.
+    mem_limit: 1g
+    cpus: 2.0
     networks:
       - polyagents
 
@@ -94,6 +113,10 @@ services:
         #
         # ENGINE_URL must be the address the *browser* uses to reach the engine
         # (the host's external addr), NOT the docker-internal `engine` hostname.
+        # A fresh clone builds out of the box: .env.example sets
+        # NEXT_PUBLIC_ENGINE_URL=http://localhost:8080, and the documented setup
+        # is `cp .env.example .env` (then override for a real deploy). The
+        # `:?required` guard below only fails if .env omits the var entirely.
         NEXT_PUBLIC_ENGINE_URL: ${NEXT_PUBLIC_ENGINE_URL:?NEXT_PUBLIC_ENGINE_URL is required in .env (browser-visible engine URL)}
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required in .env}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required in .env}
@@ -111,6 +134,22 @@ services:
         condition: service_healthy
     ports:
       - "3000:3000"
+    # Probe the Next.js standalone server so compose can detect a crashed or
+    # hung frontend (restart: unless-stopped handles recovery). Uses the `node`
+    # binary already in the runtime image (node:20-bookworm-slim has global
+    # fetch) — no extra HTTP client package needed. Any non-2xx/3xx is treated
+    # as unhealthy; the homepage is enough to prove the server is answering.
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "node -e \"fetch('http://localhost:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Cap the Node.js standalone server so it can't crowd out the engine/db.
+    mem_limit: 512m
+    cpus: 1.0
     networks:
       - polyagents
 
@@ -138,6 +177,9 @@ services:
     # Override the image CMD to run the stdio MCP server instead of the HTTP engine.
     command: ["poly-mcp"]
     stdin_open: true
+    # Short-lived agent command channel — a tight cap is plenty.
+    mem_limit: 512m
+    cpus: 1.0
     networks:
       - polyagents
 
@@ -156,12 +198,20 @@ networks:
 #   "mcp": { "servers": { "polyagents": {
 #       "command": "docker",
 #       "args": ["run", "--rm", "-i",
-#                "--network", "polyagents_polyagents",
+#                "--network", "<COMPOSE_NETWORK>",
 #                "--env-file", "/abs/path/to/.env",
 #                "polyagents/engine:latest", "poly-mcp"]
 #   }}}
 #
-# `--network polyagents_polyagents` attaches the one-off MCP container to the
+# The <COMPOSE_NETWORK> value is <project>_<network>, where <project> is the
+# Compose project name and <network> is `polyagents` (defined below). The
+# project name defaults to the directory holding this compose file (`srcs`
+# when invoked as `docker compose -f srcs/docker-compose.yml ...`), so the
+# network is usually `srcs_polyagents` — NOT `polyagents_polyagents`. Pin it
+# by setting `COMPOSE_PROJECT_NAME` (e.g. export COMPOSE_PROJECT_NAME=polyagents,
+# giving `polyagents_polyagents`). ALWAYS confirm with `docker network ls`
+# before wiring OpenClaw, since `-p` or a different cwd changes the name.
+#
+# `--network <COMPOSE_NETWORK>` attaches the one-off MCP container to the
 # compose network so DATABASE_URL=postgres://postgres:PASS@db:5432/polyagents
-# resolves to the db container by service name. (Compose prefixes the network
-# name with the project dir: <project>_<network>. Verify with `docker network ls`.)
+# resolves to the db container by service name.
