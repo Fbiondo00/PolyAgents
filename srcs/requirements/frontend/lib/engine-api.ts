@@ -24,9 +24,22 @@ import {
 
 const API = process.env.NEXT_PUBLIC_ENGINE_URL ?? 'http://localhost:8080'
 
+// The engine gates state/money-mutating routes behind a bearer token
+// (ENGINE_API_TOKEN). This client module is imported by 'use client' components
+// and so runs in the browser — therefore the token must be a NEXT_PUBLIC_ var to
+// be available client-side. Exposure trade-off: this is a single-operator admin
+// token for a trading vault that binds to loopback/Tailscale, so browser
+// visibility is acceptable (the engine still rejects any caller without it).
+// The engine URL is already public by the same reasoning. For a multi-user
+// deploy, route browser writes through a server action that injects a
+// server-only token instead.
+const API_TOKEN = process.env.NEXT_PUBLIC_ENGINE_API_TOKEN ?? ''
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (API_TOKEN) headers['Authorization'] = `Bearer ${API_TOKEN}`
   const res = await fetch(`${API}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     ...init,
   })
   if (!res.ok) {

@@ -12,14 +12,26 @@ import { engine } from "@/lib/engine-api"
 // value at build time so it can't differ per-deploy (e.g. Docker/K8s DNS).
 const API = process.env.ENGINE_URL ?? "http://localhost:8080"
 
+// Server-only bearer token for the engine's protected (state/money-mutating)
+// routes. This is the non-public half — it stays on the server, never reaches
+// the browser bundle. (The client-side engine-api.ts uses NEXT_PUBLIC_ENGINE_API_TOKEN
+// for browser-originated writes; this server path keeps the stronger guarantee.)
+const API_TOKEN = process.env.ENGINE_API_TOKEN ?? ""
+
+function authHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (API_TOKEN) headers["Authorization"] = `Bearer ${API_TOKEN}`
+  return headers
+}
+
 async function apiPost<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, { method: "POST", headers: { "Content-Type": "application/json" } })
+  const res = await fetch(`${API}${path}`, { method: "POST", headers: authHeaders() })
   if (!res.ok) throw new Error(`Engine API ${res.status}: ${res.statusText}`)
   return res.json()
 }
 
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, { headers: { "Content-Type": "application/json" } })
+  const res = await fetch(`${API}${path}`, { headers: authHeaders() })
   if (!res.ok) throw new Error(`Engine API ${res.status}: ${res.statusText}`)
   return res.json()
 }
