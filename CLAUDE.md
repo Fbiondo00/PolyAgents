@@ -79,16 +79,30 @@ All shared logic lives in three npm packages:
    - `src/providers/` — Client factories (Hedera provider)
    - Location: `srcs/requirements/sdk/src/`
 
-3. **`@polyagents/mcp`** — MCP server exposing SDK as composable AI tools via stdio
-   - **15 tools:** `start_engine`, `stop_engine`, `run_cycle`, `engine_status`, `fetch_market`, `init_vault`, `pay_oracle`, `fetch_audit`, `hedera_health`, `commit_policy`, `verify_policy`, `fetch_agent_stats`, `create_market`, `place_bet`, `resolve_market`
-   - **2 resources:** `vault://{vaultId}`, `market://{vaultId}`
-   - Location: `srcs/requirements/mcp/src/`
+3. **`poly-mcp`** (Rust) — MCP server exposing the engine as composable AI tools over stdio
+   - **18 tools** (`srcs/requirements/engine/crates/poly-mcp/src/server.rs`):
+     - **Engine control:** `start_engine`, `stop_engine`, `engine_status`, `active_engines`, `cancel_orders`
+     - **Vaults:** `list_vaults`, `get_vault`, `create_vault`
+     - **Observation (read):** `get_orders`, `get_pnl`, `get_audit`, `get_recent_outcomes` (the decision→outcome feedback signal — the learning loop's primary read)
+     - **Strategy (write):** `update_config` (numeric tunables), `get_active_guidance` / `set_active_guidance` (contextual advice injected into the engine AI's prompt — the closed learning loop)
+     - **Funding:** `vault_agent_address`, `vault_balance`, `withdraw_vault`
+   - All tools take `vault_id`; limit-bearing ones accept an optional `limit` (default 50–100).
+   - No resources are exposed; everything is tool-based.
+   - (The old JS `@polyagents/mcp` server with `fetch_market`/`place_bet`/`hedera_health` etc. was removed in the Rust reorg — those tool names are ghosts, do not call them.)
 
 ### Frontend
 
 **Next.js 16.2** with App Router (React 19), TypeScript, Tailwind CSS 4, shadcn/ui.
 
 All pages are `'use client'` components. No Server Components, no API routes, no Server Actions.
+
+### MCP servers available
+
+Both Claude Code and OpenClaw connect to these MCP servers. Secrets (DB password, API keys) never live in committed config — they're read from the gitignored `.env` / `~/.openclaw/polyagents.env` (0600).
+
+- **`polyagents`** (Rust `poly-mcp`, stdio) — the engine. All 18 vault/engine/trading tools listed in the SDK-First section above. This is how the agent controls trading. Config: `~/.openclaw/openclaw.json` (OpenClaw) / launched by the host for Claude Code.
+- **`postgres-supabase`** (`@modelcontextprotocol/server-postgres`, stdio) — **read-only** SQL + schema inspection against the Supabase Postgres backing the engine (`vaults`, `trade_outcomes`, `active_guidance`, `virtual_orders`, `pnl_snapshots`, `audit_events`, etc.). Use it to run ad-hoc `SELECT`s, inspect the schema, or verify what the reconciler wrote. Connection string is supplied via a wrapper script that reads the URL from the sidecar env — never inline it. Tools: `query` (read-only SQL), `list_tables`, `describe_table`, `schema_info`, etc.
+- **Host-provided utility servers** (Claude Code only, via `~/.claude.json`): `exa` (web search/fetch), `searxng` (meta web search), `zai-mcp-server` + `web-search-prime`/`web-reader`/`zread` (web search/read + GitHub repo reading), `terraform` (infra state). These are general-purpose research/ops tools, not PolyAgents-specific.
 
 ### Routing Structure
 

@@ -43,6 +43,8 @@ be patient between beats.
 
 ## Tool inventory (the real MCP tools)
 
+### `polyagents` — engine control + learning loop
+
 Engine control: `start_engine`, `stop_engine`, `engine_status`, `active_engines`,
 `cancel_orders`.
 
@@ -56,6 +58,27 @@ Funding: `vault_agent_address`, `vault_balance`, `withdraw_vault`, `create_vault
 
 The ghosts are gone: there is no `hedera_health`, `fetch_market`, `place_bet`,
 `pay_oracle`, or `commit_policy`. Don't call them.
+
+### `postgres-supabase` — read-only SQL against the engine's database
+
+`@modelcontextprotocol/server-postgres`, **read-only**. Use it to inspect raw
+state behind the engine tools — the same tables `get_recent_outcomes` /
+`get_pnl` / `get_audit` read from, plus anything not surfaced by a tool.
+
+- `query` — run a read-only `SELECT` (the server rejects writes; it connects
+  as a read-only-capable path). Examples:
+  - `SELECT vault_id, status, winning_side, realized_pnl, decided_at FROM trade_outcomes ORDER BY decided_at DESC LIMIT 50;` — raw feedback signal (compare to `get_recent_outcomes`).
+  - `SELECT * FROM active_guidance;` — what guidance each vault is currently running under.
+  - `SELECT id, name, mode, token_balance, created FROM vaults ORDER BY created DESC;` — vault roster.
+- `schema_info` / `list_tables` / `describe_table` — discover the schema before
+  querying. Tables include: `vaults`, `strategy_configs`, `keypairs`,
+  `virtual_orders`, `trade_outcomes`, `active_guidance`, `pnl_snapshots`,
+  `audit_events`, `engine_runs`, `market_states`, `cached_books`.
+
+This is a **read** channel. Never attempt `INSERT`/`UPDATE`/`DELETE`/`DROP`
+through it — the engine and the `polyagents` write tools own mutations.
+Prefer the typed `polyagents` tools when they exist (they encode the rules in
+`SOUL.md`); reach for raw SQL only to answer a question no tool covers.
 
 ## Vault resolution
 
