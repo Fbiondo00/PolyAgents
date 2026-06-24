@@ -28,6 +28,9 @@ tsconfig.tsbuildinfo
 # Local Claude Code settings (per-machine permissions, may hold local paths)
 .claude/settings.local.json
 
+# MCP config (contains secrets — DB passwords — use .mcp.json.example as template)
+.mcp.json
+
 # Rust build artifacts
 target/
 
