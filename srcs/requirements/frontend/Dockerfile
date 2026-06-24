@@ -7,7 +7,7 @@
 #
 # NEXT_PUBLIC_* vars are baked at BUILD time (Next inlines public env). Use a
 # build arg for the engine URL so the bundle points at the right host. Runtime
-# secrets (Supabase service-role key) are injected at run via env_file.
+# secrets are injected at run via env_file.
 
 # ── Stage 1: deps ───────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS deps
@@ -37,12 +37,8 @@ COPY . .
 # below let the build succeed; a real deploy MUST override them with real build
 # args (they are baked into the client bundle — runtime env cannot change them).
 ARG NEXT_PUBLIC_ENGINE_URL=http://localhost:8080
-ARG NEXT_PUBLIC_SUPABASE_URL=http://placeholder.invalid
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
 ARG NEXT_PUBLIC_PRIVY_APP_ID=placeholder-build-only
 ENV NEXT_PUBLIC_ENGINE_URL=$NEXT_PUBLIC_ENGINE_URL \
-    NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
-    NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
     NEXT_PUBLIC_PRIVY_APP_ID=$NEXT_PUBLIC_PRIVY_APP_ID \
     NEXT_TELEMETRY_DISABLED=1
 

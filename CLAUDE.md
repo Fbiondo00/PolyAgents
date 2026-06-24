@@ -31,10 +31,10 @@ cd srcs/requirements/mcp && npm install && npm run build
 # MCP server
 cd srcs/requirements/mcp && node dist/index.js
 
-# Supabase (local development)
-supabase start                          # Start local Supabase containers
-supabase gen types typescript --local   # Regenerate types after migration changes
-supabase stop                           # Stop containers
+# Full stack (Postgres 15 + Rust engine + frontend) via docker compose
+cp .env.example .env          # then fill in real values (incl. NEXT_PUBLIC_*)
+docker compose -f srcs/docker-compose.yml up --build -d
+docker compose -f srcs/docker-compose.yml logs -f engine
 ```
 
 No test runner is configured for the frontend.
@@ -53,7 +53,6 @@ PolyAgents/
         ├── schema/           # Shared types, schemas, constants (@polyagents/schema)
         ├── sdk/              # Business logic modules (@polyagents/sdk)
         ├── mcp/              # MCP server exposing SDK tools via stdio (@polyagents/mcp)
-        ├── supabase/         # Local Supabase (config.toml, migrations/)
         └── openclaw/         # OpenClaw AI agent config + trading-cycle skill
 ```
 
@@ -105,13 +104,13 @@ All pages are `'use client'` components. No Server Components, no API routes, no
 
 ### Data Layer
 
-Two persistence layers:
-
-**Supabase (primary backend)** — `srcs/requirements/supabase/`
-- PostgreSQL via local Supabase containers (config.toml + migrations)
-- Typed queries in `@polyagents/sdk` → `modules/supabase/queries.ts`
-- 8 tables: vaults, engine_runs, engine_orders, engine_market_states, engine_pnl_snapshots, engine_audit, engine_configs, engine_books
-- Generated types via `supabase gen types typescript --local` → `schema/src/types/database.ts`
+**PostgreSQL (primary backend)** — plain Postgres 15, run as the `db` service in
+`srcs/docker-compose.yml` (no Supabase). The Rust engine connects via
+`DATABASE_URL` (sqlx `PgPool`) and applies its SQL migrations on boot
+(`sqlx::migrate!("./migrations")`, files in `srcs/requirements/engine/migrations/`).
+11 tables: vaults, engine_runs, virtual_orders, market_states, strategy_configs,
+pnl_snapshots, audit_events, cached_books, vault_keypairs, trade_outcomes,
+active_guidance.
 
 **localStorage (frontend demo / legacy)** — persists across reloads without backend
 - `lib/store.ts` — CRUD helpers over `localStorage`
@@ -161,7 +160,7 @@ Arc prediction market contracts were stripped after pivoting to Polymarket-nativ
 - **@modelcontextprotocol/sdk** for MCP server
 - **viem** for Arc/ENS EVM interactions
 - **@hashgraph/sdk** for Hedera operations
-- **Supabase** (local) for PostgreSQL persistence — `@supabase/supabase-js` client with generated types
+- **PostgreSQL 15** (plain, via `srcs/docker-compose.yml`) for vault/engine persistence — accessed by the Rust engine through sqlx
 
 ## Styling Conventions
 
@@ -182,7 +181,7 @@ Arc prediction market contracts were stripped after pivoting to Polymarket-nativ
 - **Env vars**: SDK uses unprefixed vars (`HEDERA_OPERATOR_ID`, `ENS_OWNER_PRIVATE_KEY`, `ARC_PRIVATE_KEY`) instead of `NEXT_PUBLIC_*`
 - **Build order**: schema → sdk → mcp (each depends on the previous)
 - **MCP tools**: All chain operations exposed via `@polyagents/mcp` for AI agent consumption
-- **Supabase queries**: All database operations in `@polyagents/sdk` → `modules/supabase/queries.ts`, using generated `Database` types from `@polyagents/schema`
+- **Database access**: All persistence goes through the Rust engine (sqlx `PgPool` on `DATABASE_URL`); migrations live in `srcs/requirements/engine/migrations/` and run on boot
 
 ## Skills
 
@@ -201,4 +200,4 @@ The following skills are installed in `.claude/skills/`. Consult their `SKILL.md
 - **Hedera Mirror Node** (`https://testnet.mirrornode.hedera.com/api/v1`) — audit log queries
 - **Arc Testnet RPC** — EVM interactions for prediction markets
 - **ENS (Sepolia)** — text record commits, subname management
-- **Supabase (local)** — `http://127.0.0.1:54321` — PostgreSQL for vault/engine persistence
+- **PostgreSQL** — `db` service in `srcs/docker-compose.yml` (internal to the compose network); expose on localhost via `srcs/docker-compose.db-port.yml` for local `psql` only

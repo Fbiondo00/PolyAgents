@@ -41,20 +41,16 @@ The strategy is passive market-making: capture the spread between bid and ask, w
 - **Hedera SDK** (HCS, HTS, Mirror Node)
 - **viem** (Arc + ENS Sepolia)
 - **Privy** (wallet auth)
-- **Supabase** (local PostgreSQL for vault/engine persistence)
+- **PostgreSQL 15** (plain, via `srcs/docker-compose.yml`) for vault/engine persistence
 
 ## Getting Started
 
 ```bash
-# Start local Supabase
-cd srcs/requirements/supabase && supabase start
+# Full stack (Postgres + Rust engine + frontend)
+cp .env.example .env            # then fill in real values (incl. NEXT_PUBLIC_*)
+docker compose -f srcs/docker-compose.yml up --build -d
 
-# Build shared packages (order: schema → sdk → mcp)
-cd srcs/requirements/schema && npm install && npm run build
-cd srcs/requirements/sdk && npm install && npm run build
-cd srcs/requirements/mcp && npm install && npm run build
-
-# Start frontend
+# Frontend-only dev
 cd srcs/requirements/frontend
 npm install
 npm run dev
@@ -79,8 +75,7 @@ Copy `.env.example` to `.env.local`. Key variables:
 | `ARC_PRIVATE_KEY` | Arc testnet wallet key |
 | `ARC_NETWORK` | `testnet` |
 | `POLYMARKET_API_KEY` / `POLYMARKET_API_SECRET` | Polymarket CLOB credentials (live mode only) |
-| `SUPABASE_URL` | Supabase URL (default: `http://127.0.0.1:54321`) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (from `supabase start` output) |
+| `DATABASE_URL` | Postgres connection string (compose overrides it for the engine container) |
 
 ## Operating Modes
 

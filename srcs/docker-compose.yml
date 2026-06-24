@@ -1,7 +1,7 @@
 # PolyAgents — production docker-compose
 #
 # Services:
-#   db       — PostgreSQL 15 (supabase/postgres image), persisted volume
+#   db       — PostgreSQL 15 (stock postgres:15 image), persisted volume
 #   engine   — Rust axum HTTP API + trading state machine + reconciler (:8080)
 #   frontend — Next.js 16 standalone (:3000)
 #   mcp      — poly-mcp over stdio (optional profile; launched by OpenClaw on the host)
@@ -90,13 +90,11 @@ services:
         # build, so a normal `docker compose up --build` bakes the real values.
         # The `:?required` guard FAILS the build if any is unset/empty, so you
         # can never silently ship a bundle with the Dockerfile's placeholder
-        # fallbacks. Set all four in .env before building.
+        # fallbacks. Set both in .env before building.
         #
         # ENGINE_URL must be the address the *browser* uses to reach the engine
         # (the host's external addr), NOT the docker-internal `engine` hostname.
         NEXT_PUBLIC_ENGINE_URL: ${NEXT_PUBLIC_ENGINE_URL:?NEXT_PUBLIC_ENGINE_URL is required in .env (browser-visible engine URL)}
-        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required in .env}
-        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required in .env}
         NEXT_PUBLIC_PRIVY_APP_ID: ${NEXT_PUBLIC_PRIVY_APP_ID:?NEXT_PUBLIC_PRIVY_APP_ID is required in .env}
     image: polyagents/frontend:latest
     container_name: polyagents-frontend
